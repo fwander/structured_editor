@@ -26,10 +26,10 @@ export const Tree: Component<TreeProps> = (props) => {
   props.node.render_info.reactiveSet = setTree;
 
   createEffect(() => {
-    if (!is_term(tree().data) && is_list[tree().data - grammar_start] && tree().children.length == 2) {
+    if (!is_term(tree().data) && is_list(tree().data) && tree().children.length == 2) {
       let children = [tree().children[1]];
       let looking_at = tree().children[0];
-      while (is_list[looking_at.data - grammar_start]) {
+      while (is_list(looking_at.data)) {
         if (looking_at.children.length === 1) {
           children.splice(0,0,looking_at.children[0]);
           break;

@@ -79,7 +79,7 @@ export const grammar: Rule[][] = [
   ], 
 ]
 
-export const nullable: boolean[] = [
+const list_tbl: boolean[] = [
   false,
   false,
   false,
@@ -88,14 +88,12 @@ export const nullable: boolean[] = [
   false,
 ]
 
-export const is_list: boolean[] = [
-  false,
-  false,
-  false,
-  false,
-  false,
-  false,
-]
+export function is_list(s: Symbol) {
+  if (is_term(s)) {
+    return false;
+  }
+  return list_tbl[s - grammar_start];
+}
 
 
 export function is_term(s: Symbol){

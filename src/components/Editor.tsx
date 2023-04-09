@@ -64,6 +64,10 @@ function getStreamAndTarget(event: KeyboardEvent, cursor: ParseTree): [stream: P
             // stream = retokenize(target,event.key,index);
             if (is_term(cursor.data) && cursor.token) {
                 let result = tokenize(cursor.token.concat(adding_char))
+                console.log("result");
+                for (const tree of result) {
+                    console.log(ptree_str(tree));
+                }
                 target.children.splice(index,1);
                 target.children.splice(index,0,...result);
                 stream = target.children;
@@ -155,9 +159,9 @@ export const Editor: Component = () => {
         console.log("new tree:")
         console.log(ptree_str(tree()));
         const orig_looking_at = looking_at;
-        if (!is_term(looking_at.data) && is_list[looking_at.data - grammar_start]) {
-            while(looking_at.render_info!.parent && !is_term(looking_at.data) && is_list[looking_at.data - grammar_start]) {
-                if (!is_term(looking_at.render_info!.parent.data) && is_list[looking_at.render_info!.parent.data - grammar_start])
+        if (!is_term(looking_at.data) && is_list(looking_at.data)) {
+            while(looking_at.render_info!.parent && !is_term(looking_at.data) && is_list(looking_at.data)) {
+                if (!is_term(looking_at.render_info!.parent.data) && is_list(looking_at.data))
                     looking_at = looking_at.render_info!.parent;
                 else
                     break;
