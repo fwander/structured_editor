@@ -1,7 +1,7 @@
 
 import { createSignal, createEffect, JSX, Component } from "solid-js";
 import { grammar_start, is_list, is_term, Symbol } from "~/gen/grammar";
-import { concreteify, correct_parents, defaultParseTree, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, reparse, retokenize, tokenize } from "~/parse";
+import { concreteify, defaultParseTree, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, reparse, retokenize, tokenize } from "~/parse";
 import { Tree } from "./Tree";
 
 function isAlphaNumeric(str: string) {
@@ -22,6 +22,9 @@ function isAlphaNumeric(str: string) {
 function getStreamAndTarget(event: KeyboardEvent, cursor: ParseTree): [stream: ParseTree[], target: ParseTree] | [null, null] {
     let adding_char = "";
     let insert_mode = true;
+    if (!cursor.render_info) {
+        return [null, null];
+    }
     if (event.key.length === 1 && isAlphaNumeric(event.key)) {
         adding_char = event.key;
     }
@@ -41,37 +44,52 @@ function getStreamAndTarget(event: KeyboardEvent, cursor: ParseTree): [stream: P
             stream = [];
         }
         target = cursor;
+        console.log("new stream");
+        for (const tree of stream) {
+            console.log(ptree_str(tree));
+        }
+        console.log("target");
+        console.log(ptree_str(target));
         return [stream, target]
     }
     else {
-        const parent = cursor.parent;
+        const parent = cursor.render_info.parent;
         if (!parent) {
             return [null,null];
         }
         target = parent;
-        const index = parent.children.indexOf(cursor);
+        let index = parent.children.indexOf(cursor);
         if (adding_char.length !== 0) {
-            const target_clone = ptree_less_shallow(target);
-            let delta = insert_mode? 1 : 0;
-            if (is_list[target.data - grammar_start]) {
-                delta = 0;
+            //target_clone.children.splice(index+1,0,{data: Symbol.unknown, children: [], token: event.key, start: 0, end: 0, num_imagined: 0});
+            // stream = retokenize(target,event.key,index);
+            if (is_term(cursor.data) && cursor.token) {
+                let result = tokenize(cursor.token.concat(adding_char))
+                target.children.splice(index,1);
+                target.children.splice(index,0,...result);
+                stream = target.children;
             }
-            target_clone.children.splice(index+delta,0,{data: Symbol.unknown, children: [], token: event.key, start: 0, end: 0, num_imagined: 0});
-            stream = retokenize(target_clone,index+1);
+            else {
+                target.children.splice(index+1,0,...tokenize(adding_char));
+                stream = target.children;
+            }
         }
         else {
-            while(target.children.length === 1 && target.parent) {
-                target = target.parent;
+            let prev = target;
+            while(target.children.length === 1 && target.render_info!.parent) {
+                prev = target;
+                target = target.render_info!.parent;
             }
-            const target_clone = ptree_less_shallow(target);
-            target_clone.children.splice(index,1);
-            stream = target_clone.children;
+            index = target.children.indexOf(prev);
+            target.children.splice(index,1);
+            stream = retokenize(target,"",Math.min(index-1,0));  //TODO maybe we don't need this math.min
             for (let i = 0; i < stream.length; i++) {
                 stream[i].start = i;
                 stream[i].end = i+1;
             }
         }
     }
+    console.log("cursor");
+    console.log(ptree_str(cursor));
     console.log("new stream");
     for (const tree of stream) {
         console.log(ptree_str(tree));
@@ -105,56 +123,58 @@ export const Editor: Component = () => {
             return;
         }
         let [newSubTrees, up] = reparse(target,stream);
-        if (newSubTrees.length === 0) { return;}
-        console.log("pre tree")
-        console.log(ptree_str(newSubTrees[0]));
+        if (newSubTrees.length === 0) { 
+            let target_clone = ptree_less_shallow(target);
+            target.render_info?.reactiveSet(target_clone);
+            return;
+        }
+        if (target.render_info === undefined) {
+            return;
+        }
         concreteify(newSubTrees[0]);
-        correct_parents(newSubTrees[0]);
         let looking_at = target;
         while(up > 0) {
-            if (looking_at.parent)
-                looking_at = looking_at.parent;
+            if (looking_at.render_info!.parent)
+                looking_at = looking_at.render_info!.parent;
             up -= 1;
         }
-        newSubTrees[0].reactiveSet = looking_at.reactiveSet;
+        newSubTrees[0].render_info = looking_at.render_info;
         setFocusedNode(newSubTrees[0]);
-        if (!looking_at.parent) {
+        if (!looking_at.render_info!.parent) {
             setTree(newSubTrees[0]);
-            if (looking_at.reactiveSet) {
-                looking_at.reactiveSet(newSubTrees[0]);
+            if (looking_at.render_info) {
+                looking_at.render_info.reactiveSet(newSubTrees[0]);
             }
             console.log("new tree:")
             console.log(ptree_str(newSubTrees[0]));
             return;
         }
-        const index = looking_at.parent.children.indexOf(looking_at);
-        looking_at.parent.children[index] = newSubTrees[0];
-        newSubTrees[0].parent = looking_at.parent;
+        const index = looking_at.render_info!.parent.children.indexOf(looking_at);
+        looking_at.render_info!.parent.children[index] = newSubTrees[0];
+        newSubTrees[0].render_info = looking_at.render_info;
         console.log("new tree:")
         console.log(ptree_str(tree()));
         const orig_looking_at = looking_at;
         if (!is_term(looking_at.data) && is_list[looking_at.data - grammar_start]) {
-            while(looking_at.parent && !is_term(looking_at.data) && is_list[looking_at.data - grammar_start]) {
-                if (!is_term(looking_at.parent.data) && is_list[looking_at.parent.data - grammar_start])
-                    looking_at = looking_at.parent;
+            while(looking_at.render_info!.parent && !is_term(looking_at.data) && is_list[looking_at.data - grammar_start]) {
+                if (!is_term(looking_at.render_info!.parent.data) && is_list[looking_at.render_info!.parent.data - grammar_start])
+                    looking_at = looking_at.render_info!.parent;
                 else
                     break;
             }
-            if (looking_at.reactiveSet) {
+            if (looking_at.render_info) {
                 if (looking_at === orig_looking_at) {
-                    looking_at.reactiveSet(newSubTrees[0]);
+                    looking_at.render_info.reactiveSet(newSubTrees[0]);
                 }
                 else {
                     const new_looking = ptree_shallow(looking_at)
-                    looking_at.reactiveSet(new_looking);
+                    looking_at.render_info.reactiveSet(new_looking);
                     setFocusedNode(new_looking);
                 }
             }
         }
         else {
-            if (looking_at.reactiveSet) {
-                looking_at.reactiveSet(newSubTrees[0]);
-            }
+            looking_at.render_info!.reactiveSet(newSubTrees[0]);
         }
       }
   };

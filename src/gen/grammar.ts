@@ -18,14 +18,14 @@ export enum Symbol {
 export const grammar_start = Symbol.S;
 
 export const regexes = [
-  new RegExp('^a'),
+  new RegExp('^[0-9]+'),
   new RegExp('^b'),
   new RegExp('^c'),
   new RegExp('^d'),
 ];
 
 export const defaults = [
-  'a',
+  '',
   'b',
   'c',
   'd',
@@ -90,7 +90,7 @@ export const nullable: boolean[] = [
 
 export const is_list: boolean[] = [
   false,
-  true,
+  false,
   false,
   false,
   false,

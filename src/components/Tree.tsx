@@ -1,21 +1,29 @@
 import { createSignal, createEffect, For, JSX, Component } from "solid-js";
 import { grammar_start, is_list, is_term } from "~/gen/grammar";
-import { ParseTree, ptree_str } from "~/parse";
+import { RenderInfo, ParseTree, ptree_str } from "~/parse";
 import "./Tree.css";
 
 
 
 type TreeProps = {
     node: ParseTree;
+    parent?: ParseTree;
     focusedNode: () => ParseTree | null;
     onFocus: (node: ParseTree) => void;
   };
 
 export const Tree: Component<TreeProps> = (props) => {
 
+  const render_info = {
+    reactiveSet: (x: ParseTree)=>{},
+    last_selected: 0,
+    cursor_index: 0,
+    parent: props.parent,
+  }
+  props.node.render_info = render_info;
   const [tree, setTree] = createSignal<ParseTree>(props.node);
   const [children, setChildren] = createSignal<ParseTree[]>(tree().children);
-  props.node.reactiveSet = setTree;
+  props.node.render_info.reactiveSet = setTree;
 
   createEffect(() => {
     if (!is_term(tree().data) && is_list[tree().data - grammar_start] && tree().children.length == 2) {
@@ -64,7 +72,7 @@ export const Tree: Component<TreeProps> = (props) => {
          (children().length !== 0)? <div>
           <For each={children()}>
             {(child) => (
-              <Tree node={child} focusedNode={props.focusedNode} onFocus={props.onFocus} />
+              <Tree node={child} focusedNode={props.focusedNode} onFocus={props.onFocus} parent={tree()} />
             )}
           </For>
         </div> 

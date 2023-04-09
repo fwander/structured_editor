@@ -1,3 +1,13 @@
 .focused {
     background-color: rgb(181, 213, 242);
 }
+
+/* .focused::after {
+    content: "";
+    display: inline-block;
+    width: 0;
+    background-color: transparent;
+    border: none;
+    outline: none;
+    cursor: text;
+  } */
