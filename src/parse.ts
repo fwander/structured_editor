@@ -370,7 +370,7 @@ type StateSet = {
   from: number;
 };
 
-const DEBUG = false;
+const DEBUG = true;
 
 export function concreteify(tree: ParseTree, start=0): number{
   tree.start = start;
@@ -453,6 +453,9 @@ function decompose(tree: ParseTree, depth: number, exception: ParseTree): [Parse
 }
 
 function recognize_append(oldChart: HashSet<RecognizerItem>[], appending: ParseTree[]) {
+  if (appending.length === 0) {
+    return oldChart;
+  }
   if (oldChart.length === 0) {
     oldChart.push(new HashSet<RecognizerItem>(item_hash));
     grammar[0].forEach((rule)=>{
