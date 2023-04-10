@@ -3,6 +3,8 @@ import { createSignal, createEffect, JSX, Component } from "solid-js";
 import { grammar_start, is_list, is_term, Symbol } from "~/gen/grammar";
 import { add_render_info, concreteify, defaultParseTree, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, reparse, retokenize, tokenize } from "~/parse";
 import { Tree } from "./Tree";
+import { child, next_sibling, parent, prev_sibling } from "~/navigate";
+import { Console } from "console";
 
 function isAlphaNumeric(str: string) {
     var code, i, len;
@@ -113,9 +115,27 @@ export const Editor: Component = () => {
   };
 
   const handleKeyPress = (event: KeyboardEvent) => {
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-        // TODO
+    if (focusedNode()) {
+    if (event.key === "ArrowUp") {
+        setFocusedNode(parent(focusedNode()));
       }
+    else if (event.key === "ArrowDown") {
+        setFocusedNode(child(focusedNode()));
+    }
+    else if (event.key === "ArrowLeft") {
+        setFocusedNode(prev_sibling(focusedNode()));
+    }
+    else if (event.key === "ArrowRight") {
+        setFocusedNode(next_sibling(focusedNode()));
+    }
+    if (focusedNode()) {
+        console.log(ptree_str(focusedNode()));
+    }
+    else {
+        console.log("No selected node");
+    }
+
+}
   
       if (event.key === "Enter") {
         setInsertMode(true);
