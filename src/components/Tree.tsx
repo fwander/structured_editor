@@ -37,8 +37,9 @@ export const Tree: Component<TreeProps> = (props) => {
         if (looking_at.render_info) {
           looking_at.render_info.reactiveSet = (x: ParseTree) => {
             let tree_copy = ptree_shallow(tree());
-            console.log("reactive set inner");
-            console.log(ptree_str(tree()));
+            for (const child of tree_copy.children) {
+              child.render_info!.parent = tree_copy;
+            }
             setTree(tree_copy);
           }
         }
