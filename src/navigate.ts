@@ -1,5 +1,5 @@
 import { is_list } from "./gen/grammar";
-import { ParseTree } from "./parse";
+import { ParseTree, ptree_str } from "./parse";
 
 function move_to_bottom(from: ParseTree) {
     while (from && from.render_info && (from.children.length === 1 || (is_list(from.data) && from.children.length !== 0 && (from.render_info.parent && from.render_info.parent.data === from.data)))) {
@@ -40,21 +40,23 @@ function mov_sibling(from: ParseTree, delta: number) {
     if (!from.render_info) {
         return from;
     }
-    if (!from.render_info.parent) {
+    const parent = from.render_info.parent
+    if (!parent) {
         return from;
     }
-    let ind = from.render_info.parent.children.indexOf(from) + delta;
-    if (ind >= from.render_info.parent.children.length) {
-        return from.render_info.parent.children[from.render_info.parent.children.length - 1];
+    let ind = parent.children.indexOf(from) + delta;
+    const length = parent.children.length
+    if (ind >= length) {
+        return parent.children[length - 1];
     }
 
     if (ind < 0) {
-        return from.render_info.parent.children[0];
+        return parent.children[0];
     }
 
 
 
-    return from.render_info.parent.children[ind];
+    return parent.children[ind];
 }
 
 export function prev_sibling(from: ParseTree) {

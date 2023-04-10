@@ -2,6 +2,21 @@
     background-color: rgb(181, 213, 242);
 }
 
+.text-wrapper {
+    display: flex;
+}
+/* .first-div, .second-div {
+    flex: 1;
+} */
+
+.cursor-div {
+    width: 1px;
+    height: 20px;
+    margin: 0 -0.5px;
+    background-color: black;
+    cursor: text;
+  }
+
 /* .focused::after {
     content: "";
     display: inline-block;

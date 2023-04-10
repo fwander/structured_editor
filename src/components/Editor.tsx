@@ -1,10 +1,9 @@
 
 import { createSignal, createEffect, JSX, Component } from "solid-js";
 import { grammar_start, is_list, is_term, Symbol } from "~/gen/grammar";
-import { add_render_info, concreteify, defaultParseTree, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, reparse, retokenize, tokenize } from "~/parse";
+import { add_render_info, concreteify, defaultParseTree, get_root, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, reparse, retokenize, tokenize } from "~/parse";
 import { Tree } from "./Tree";
 import { child, next_sibling, parent, prev_sibling } from "~/navigate";
-import { Console } from "console";
 
 function isAlphaNumeric(str: string) {
     var code, i, len;
@@ -46,12 +45,6 @@ function getStreamAndTarget(event: KeyboardEvent, cursor: ParseTree): [stream: P
             stream = [];
         }
         target = cursor;
-        console.log("new stream");
-        for (const tree of stream) {
-            console.log(ptree_str(tree));
-        }
-        console.log("target");
-        console.log(ptree_str(target));
         return [stream, target]
     }
     else {
@@ -65,7 +58,9 @@ function getStreamAndTarget(event: KeyboardEvent, cursor: ParseTree): [stream: P
             //target_clone.children.splice(index+1,0,{data: Symbol.unknown, children: [], token: event.key, start: 0, end: 0, num_imagined: 0});
             // stream = retokenize(target,event.key,index);
             if (is_term(cursor.data) && cursor.token) {
-                let result = tokenize(cursor.token.concat(adding_char))
+                const cursor_index = cursor.render_info.cursor_index;
+                const token = cursor.token;
+                let result = tokenize(token.slice(0,cursor_index) + adding_char + token.slice(cursor_index))
                 console.log("result");
                 for (const tree of result) {
                     console.log(ptree_str(tree));
@@ -94,21 +89,13 @@ function getStreamAndTarget(event: KeyboardEvent, cursor: ParseTree): [stream: P
             }
         }
     }
-    console.log("cursor");
-    console.log(ptree_str(cursor));
-    console.log("new stream");
-    for (const tree of stream) {
-        console.log(ptree_str(tree));
-    }
-    console.log("target");
-    console.log(ptree_str(target));
     return [stream, target];
 }
 
+export const [insertMode, setInsertMode] = createSignal<boolean>(false);
 export const Editor: Component = () => {
 //   const [tree, setTree] = createSignal<ParseTree>(defaultParseTree);
   const [focusedNode, setFocusedNode] = createSignal<ParseTree>(defaultParseTree);
-  const [insertMode, setInsertMode] = createSignal<boolean>(false);
 
   const handleFocus = (node: ParseTree) => {
     setFocusedNode(node);
@@ -123,10 +110,26 @@ export const Editor: Component = () => {
         setFocusedNode(child(focusedNode()));
     }
     else if (event.key === "ArrowLeft") {
-        setFocusedNode(prev_sibling(focusedNode()));
+        if (insertMode()) {
+            let clone = ptree_shallow(focusedNode());
+            clone.render_info!.cursor_index-=1;
+            focusedNode().render_info?.reactiveSet(clone);
+            setFocusedNode(clone);
+        }
+        else {
+            setFocusedNode(prev_sibling(focusedNode()));
+        }
     }
     else if (event.key === "ArrowRight") {
-        setFocusedNode(next_sibling(focusedNode()));
+        if (insertMode()) {
+            let clone = ptree_shallow(focusedNode());
+            clone.render_info!.cursor_index+=1;
+            focusedNode().render_info?.reactiveSet(clone);
+            setFocusedNode(clone);
+        }
+        else {
+            setFocusedNode(next_sibling(focusedNode()));
+        }
     }
     if (focusedNode()) {
         console.log(ptree_str(focusedNode()));
@@ -136,6 +139,9 @@ export const Editor: Component = () => {
     }
 
 }
+      if (event.key === "Escape") {
+        setInsertMode(false);
+      }
   
       if (event.key === "Enter") {
         setInsertMode(true);
@@ -166,6 +172,8 @@ export const Editor: Component = () => {
             up -= 1;
         }
         set_node(looking_at,newSubTrees[0]);
+        console.log("new tree");
+        console.log(ptree_str(get_root(newSubTrees[0])));
     }
   };
 
@@ -182,23 +190,13 @@ export const Editor: Component = () => {
 function set_node(target: ParseTree, new_node: ParseTree) {
     new_node.render_info = target.render_info;
     add_render_info(new_node);
-    console.log(new_node.render_info);
-    // setFocusedNode(new_node);
     if (!target.render_info!.parent) {
-        // setTree(new_node);
         if (target.render_info) {
             target.render_info.reactiveSet(new_node);
         }
-        console.log("new tree no parent:")
-        console.log(ptree_str(new_node));
         return;
     }
     const index = target.render_info!.parent.children.indexOf(target);
     target.render_info!.parent.children[index] = new_node;
-    console.log("new tree:")
-    console.log(ptree_str(new_node));
-    console.log("setting")
-    console.log(ptree_str(target));
     target.render_info!.reactiveSet(new_node);
-
 }

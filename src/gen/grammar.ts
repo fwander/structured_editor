@@ -81,7 +81,7 @@ export const grammar: Rule[][] = [
 
 const list_tbl: boolean[] = [
   false,
-  true,
+  false,
   false,
   false,
   false,

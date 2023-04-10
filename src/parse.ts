@@ -154,7 +154,7 @@ class ParseForest {
 
   flatten(end: number, indent: string = "", edge_context: Map<ParseForest,Map<ParseForest, number>> = new Map()): ParseTree[] {
     if (DEBUG)
-    console.log(indent + "flattening: " + Symbol[this.data] + "." + this.id + (this.start === -1 ? "?" : ""));
+      console.log(indent + "flattening: " + Symbol[this.data] + "." + this.id + (this.start === -1 ? "?" : ""));
     if (this.flatten_memo.length !== 0) {
       if (DEBUG){
         for (const tree of this.flatten_memo) {
@@ -285,6 +285,14 @@ export type RenderInfo = {
   parent?: ParseTree;
 }
 
+export function get_root(tree: ParseTree) {
+  let looking_at = tree;
+  while (looking_at.render_info?.parent) {
+    looking_at = looking_at.render_info.parent;
+  }
+  return looking_at;
+}
+
 export type ParseTree = {
   children: ParseTree[];
   data: Symbol;
@@ -360,6 +368,7 @@ export function ptree_str(t: ParseTree, indent = ""){
   return ret;
 }
 
+// belongs with chart parser
 function add_item<T>(state_set: HashSet<T>, unprocessed: (T)[], adding: T) {
   const was_there = state_set.has(adding);
   if (was_there !== undefined) {
@@ -577,40 +586,20 @@ function check(inserting: HashSet<RecognizerItem>[], existing: HashSet<Recognize
   if (inserting.length === 0 || existing.length === 0) {
     return true;
   }
-  let replace: {[x: string]: HashSet<Symbol>} = {};
-  for (const item of inserting[inserting.length-1].to_array()) {
-    if (!item.concrete) {
-      continue;
-    }
-    let symbol = item.rule.rhs[item.dot-1];
-    let there = replace[Symbol[symbol]]
-    if (there === undefined) {
-      replace[Symbol[symbol]] = item.before;
+  const inserting_set: HashSet<RecognizerItem> = inserting[inserting.length-1];
+  const existing_set: HashSet<RecognizerItem> = existing[existing.length-1];
+  for (let existing_item of existing_set.to_array()) {
+    let there = inserting_set.has(existing_item);
+    if (there == undefined) {
+      existing_set.remove(existing_item);
     }
     else {
-      replace[Symbol[symbol]].copy().concat(item.before);
+      existing_set.remove(existing_item);
+      existing_item.before.intersect(there.before);
+      existing_set.add(existing_item);
     }
   }
-  let to_remove: RecognizerItem[] = [];
-  for (let item of existing[existing.length-1].to_array()) {
-    let new_before = new HashSet<Symbol>((x)=>Symbol[x]);
-    let seen = false;
-    for (const before of item.before.to_array()) {
-      let adding = replace[Symbol[before]];
-      if (adding !== undefined) {
-        seen = true;
-        new_before.concat(adding);
-      }
-    }
-    if (!seen) {
-      to_remove.push(item);
-    }
-    item.before = new_before.intersect(item.before)
-  }
-  for (const item of to_remove) {
-    existing[existing.length-1].remove(item);
-  }
-  if (existing[existing.length-1].to_array().length === 0) {
+  if (existing_set.to_array().length === 0) {
     return false;
   }
   return true;

@@ -2,6 +2,7 @@ import { createSignal, createEffect, For, JSX, Component } from "solid-js";
 import { createStore } from "solid-js/store";
 import { grammar_start, is_list, is_term } from "~/gen/grammar";
 import { RenderInfo, ParseTree, ptree_str, ptree_shallow, ptree_less_shallow } from "~/parse";
+import { insertMode } from "./Editor";
 import "./Tree.css";
 
 
@@ -20,14 +21,8 @@ export const Tree: Component<TreeProps> = (props) => {
 
 
   if (!props.node.render_info) {
-    console.log("err");
-    console.log(ptree_str(props.node));
-    return <>ERROR</>;
+    return <>ERROR No Render info</>;
   }
-
-  console.log("rendering node");
-  console.log(ptree_str(props.node));
-
   const [tree, setTree] = createSignal<ParseTree>(props.node);
   const [children, setChildren] = createSignal<ParseTree[]>(tree().children);
   props.node.render_info.reactiveSet = setTree;
@@ -80,13 +75,15 @@ export const Tree: Component<TreeProps> = (props) => {
         class={tree() === props.focusedNode() ? "focused" : ""}
       >
         {(tree().token)?
-        <div
-          tabIndex="0"
-          onFocus={handleFocus}
-          class={tree() === props.focusedNode() ? "focused" : ""}
-        >
-          {tree().token}
-        </div>
+         (tree() === props.focusedNode() && insertMode())?
+          <div class="text-wrapper">
+            <div class="first-div">{tree().token?.slice(0,tree().render_info!.cursor_index)} </div>
+            <div class="cursor-div"></div>
+            <div class="second-div">{tree().token?.slice(tree().render_info!.cursor_index)} </div>
+          </div>
+          :
+          <div class="text-wrapper">{tree().token}</div>
+        
         : 
          (children().length !== 0)? <div>
           <For each={children()}>
@@ -96,7 +93,7 @@ export const Tree: Component<TreeProps> = (props) => {
           </For>
         </div> 
         : 
-        <div>
+        <div class="text-wrapper">
           empty
         </div>
         }
