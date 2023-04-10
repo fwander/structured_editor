@@ -304,7 +304,7 @@ export type ParseTree = {
 }
 
 export function ptree_less_shallow(tree: ParseTree) {
-  return {
+  let ret = {
     children: tree.children.map((x)=>x),
     data:tree.data,
     token:tree.token,
@@ -313,10 +313,18 @@ export function ptree_less_shallow(tree: ParseTree) {
     end: tree.end,
     render_info: tree.render_info,
   }
+  for (let child of ret.children) {
+    child.render_info!.parent = ret;
+  }
+  if (tree.render_info?.parent) {
+    const index = tree.render_info.parent.children.indexOf(tree);
+    tree.render_info.parent.children[index] = ret;
+  }
+  return ret;
 }
 
 export function ptree_shallow(tree: ParseTree) {
-  return {
+  let ret = {
     children:tree.children,
     data:tree.data,
     token:tree.token,
@@ -325,6 +333,14 @@ export function ptree_shallow(tree: ParseTree) {
     end: tree.end,
     render_info: tree.render_info,
   }
+  for (let child of ret.children) {
+    child.render_info!.parent = ret;
+  }
+  if (tree.render_info?.parent) {
+    const index = tree.render_info.parent.children.indexOf(tree);
+    tree.render_info.parent.children[index] = ret;
+  }
+  return ret;
 }
 
 function ptree_eq(t1: ParseTree, t2: ParseTree) {
