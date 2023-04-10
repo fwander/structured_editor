@@ -1,4 +1,4 @@
-import { defaults, grammar, grammar_start, is_term, regexes, Rule, Symbol } from "./gen/grammar";
+import { defaults, grammar, grammar_start, is_list, is_term, regexes, Rule, Symbol } from "./gen/grammar";
 import HashSet from "./HashSet";
 
 type RecognizerItem = {
@@ -271,6 +271,11 @@ export const defaultParseTree = {
   num_imagined: 0,
   start: 0,
   end: 1,
+  render_info: {
+  reactiveSet: (to: ParseTree)=>{},
+  last_selected: 0,
+  cursor_index: 0,
+  },
 };
 
 export type RenderInfo = {
@@ -370,7 +375,29 @@ type StateSet = {
   from: number;
 };
 
-const DEBUG = true;
+const DEBUG = false;
+
+export function add_render_info(tree: ParseTree) {
+  function recurse(tree_inner: ParseTree, parent: ParseTree) {
+    if (tree_inner.render_info) {
+      tree_inner.render_info.parent = parent;
+    }
+    else {
+      tree_inner.render_info = {
+        reactiveSet: (to: ParseTree) => {},
+        last_selected: 0,
+        cursor_index: 0,
+        parent: parent,
+      }
+    }
+    for (let child of tree_inner.children) {
+      recurse(child,tree_inner);
+    }
+  }
+  for (let child of tree.children) {
+    recurse(child,tree);
+  }
+}
 
 export function concreteify(tree: ParseTree, start=0): number{
   tree.start = start;
@@ -615,6 +642,12 @@ export function reparse(to: ParseTree, input_stream: ParseTree[]) : [ParseTree[]
     let ret = parse(input_stream);
     return [ret, 0];
   }
+  // let results = get_results(first_chart);
+  // let valid = results.filter((t)=>t.rule.lhs===to.data);
+  // if (valid.length !== 0) {
+  //   let ret = parse(input_stream,to.render_info!.parent? true : false);
+  //   return [ret, steps_up];
+  // }
   let target: ParseTree = to.render_info.parent;
   while (true) {
     if (DEBUG){

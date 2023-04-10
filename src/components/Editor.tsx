@@ -1,7 +1,7 @@
 
 import { createSignal, createEffect, JSX, Component } from "solid-js";
 import { grammar_start, is_list, is_term, Symbol } from "~/gen/grammar";
-import { concreteify, defaultParseTree, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, reparse, retokenize, tokenize } from "~/parse";
+import { add_render_info, concreteify, defaultParseTree, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, reparse, retokenize, tokenize } from "~/parse";
 import { Tree } from "./Tree";
 
 function isAlphaNumeric(str: string) {
@@ -104,8 +104,8 @@ function getStreamAndTarget(event: KeyboardEvent, cursor: ParseTree): [stream: P
 }
 
 export const Editor: Component = () => {
-  const [tree, setTree] = createSignal<ParseTree>(defaultParseTree);
-  const [focusedNode, setFocusedNode] = createSignal<ParseTree>(tree());
+//   const [tree, setTree] = createSignal<ParseTree>(defaultParseTree);
+  const [focusedNode, setFocusedNode] = createSignal<ParseTree>(defaultParseTree);
   const [insertMode, setInsertMode] = createSignal<boolean>(false);
 
   const handleFocus = (node: ParseTree) => {
@@ -129,6 +129,7 @@ export const Editor: Component = () => {
         let [newSubTrees, up] = reparse(target,stream);
         if (newSubTrees.length === 0) { 
             let target_clone = ptree_less_shallow(target);
+            add_render_info(target_clone);
             target.render_info?.reactiveSet(target_clone);
             return;
         }
@@ -138,49 +139,14 @@ export const Editor: Component = () => {
         concreteify(newSubTrees[0]);
         let looking_at = target;
         while(up > 0) {
-            if (looking_at.render_info!.parent)
-                looking_at = looking_at.render_info!.parent;
+            if (!looking_at.render_info?.parent) {
+                break;
+            }
+            looking_at = looking_at.render_info?.parent;
             up -= 1;
         }
-        newSubTrees[0].render_info = looking_at.render_info;
-        setFocusedNode(newSubTrees[0]);
-        if (!looking_at.render_info!.parent) {
-            setTree(newSubTrees[0]);
-            if (looking_at.render_info) {
-                looking_at.render_info.reactiveSet(newSubTrees[0]);
-            }
-            console.log("new tree:")
-            console.log(ptree_str(newSubTrees[0]));
-            return;
-        }
-        const index = looking_at.render_info!.parent.children.indexOf(looking_at);
-        looking_at.render_info!.parent.children[index] = newSubTrees[0];
-        newSubTrees[0].render_info = looking_at.render_info;
-        console.log("new tree:")
-        console.log(ptree_str(tree()));
-        const orig_looking_at = looking_at;
-        if (!is_term(looking_at.data) && is_list(looking_at.data)) {
-            while(looking_at.render_info!.parent && !is_term(looking_at.data) && is_list(looking_at.data)) {
-                if (!is_term(looking_at.render_info!.parent.data) && is_list(looking_at.data))
-                    looking_at = looking_at.render_info!.parent;
-                else
-                    break;
-            }
-            if (looking_at.render_info) {
-                if (looking_at === orig_looking_at) {
-                    looking_at.render_info.reactiveSet(newSubTrees[0]);
-                }
-                else {
-                    const new_looking = ptree_shallow(looking_at)
-                    looking_at.render_info.reactiveSet(new_looking);
-                    setFocusedNode(new_looking);
-                }
-            }
-        }
-        else {
-            looking_at.render_info!.reactiveSet(newSubTrees[0]);
-        }
-      }
+        set_node(looking_at,newSubTrees[0]);
+    }
   };
 
   createEffect(() => {
@@ -190,5 +156,29 @@ export const Editor: Component = () => {
     };
   });
 
-  return <Tree node={tree()} focusedNode={focusedNode} onFocus={handleFocus} />;
+  return <Tree node={defaultParseTree} focusedNode={focusedNode} onFocus={handleFocus} index={0} length={0}/>;
 };
+
+function set_node(target: ParseTree, new_node: ParseTree) {
+    new_node.render_info = target.render_info;
+    add_render_info(new_node);
+    console.log(new_node.render_info);
+    // setFocusedNode(new_node);
+    if (!target.render_info!.parent) {
+        // setTree(new_node);
+        if (target.render_info) {
+            target.render_info.reactiveSet(new_node);
+        }
+        console.log("new tree no parent:")
+        console.log(ptree_str(new_node));
+        return;
+    }
+    const index = target.render_info!.parent.children.indexOf(target);
+    target.render_info!.parent.children[index] = new_node;
+    console.log("new tree:")
+    console.log(ptree_str(new_node));
+    console.log("setting")
+    console.log(ptree_str(target));
+    target.render_info!.reactiveSet(new_node);
+
+}
