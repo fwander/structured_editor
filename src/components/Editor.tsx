@@ -23,7 +23,7 @@ function isAlphaNumeric(str: string) {
 function getStreamAndTarget(event: KeyboardEvent, cursor: ParseTree): [stream: ParseTree[], target: ParseTree] | [null, null] {
     let adding_char = "";
     let insert_mode = true;
-    if (!cursor.render_info) {
+    if (!cursor || !cursor.render_info) {
         return [null, null];
     }
     if (event.key.length === 1 && isAlphaNumeric(event.key)) {
