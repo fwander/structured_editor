@@ -154,8 +154,8 @@ export const Editor: Component = () => {
         }
         let [newSubTrees, up] = reparse(target,stream);
         if (newSubTrees.length === 0) { 
+            add_render_info(target);
             let target_clone = ptree_less_shallow(target);
-            add_render_info(target_clone);
             target.render_info?.reactiveSet(target_clone);
             return;
         }
