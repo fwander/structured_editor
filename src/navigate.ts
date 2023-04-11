@@ -74,7 +74,7 @@ function mov_sibling(from: ParseTree, delta: number) {
 
 export function prev_sibling(from: ParseTree) {
     from = mov_sibling(move_to_top_of_single_child_chain_only(from), -1);
-    if (from.render_info && from.render_info.parent && from.data === from.render_info.parent.data && is_list(from.data)) {
+    if (from.children.length !== 0 && from.render_info && from.render_info.parent && from.data === from.render_info.parent.data && is_list(from.data)) {
         from = from.children[from.children.length - 1];
     }
     return move_to_bottom(from);

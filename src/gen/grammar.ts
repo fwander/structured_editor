@@ -48,7 +48,7 @@ export const grammar: Rule[][] = [
         rhs: [Symbol.A, Symbol.B],
         names: ["", ""]},
     {lhs: Symbol.A, 
-        rhs: [Symbol.B],
+        rhs: [],
         names: [""]},
   ],
   [ //B
