@@ -25,7 +25,7 @@ class HashSet<T>{
     // mutates
     intersect(to_intersect: HashSet<T>) {
         for (const v of this.to_array()) {
-            if (to_intersect.has(v) !== undefined) {
+            if (to_intersect.has(v) === undefined) {
                 this.remove(v);
             }
         }
@@ -33,7 +33,7 @@ class HashSet<T>{
     }
 
     // mutates
-    concat(to_concat: HashSet<T>) {
+    union(to_concat: HashSet<T>) {
         for (const v of to_concat.to_array()) {
             this.add(v);
         }
@@ -62,6 +62,11 @@ class HashSet<T>{
     // does not mutate
     to_array(): T[] {
         return Object.values(this.dict);
+    }
+
+    // does not mutate
+    is_empty(): boolean {
+        return this.dict.length === 0;
     }
 };
 

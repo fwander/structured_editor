@@ -1,9 +1,9 @@
 import { is_list } from "./gen/grammar";
 import { ParseTree } from "./parse";
 
-function move_to_bottom(from: ParseTree) {
+function move_to_bottom(from: ParseTree, go_first: boolean = false) {
     while (from && from.render_info && (from.children.length === 1 || (is_list(from.data) && from.children.length !== 0 && (from.render_info.parent && from.render_info.parent.data === from.data)))) {
-        from = from.children[from.render_info.last_selected];
+        from = from.children[go_first ? 0 : from.render_info.last_selected];
     }
 
     return from;
@@ -71,6 +71,36 @@ function mov_sibling(from: ParseTree, delta: number) {
 
     return parent.children[ind];
 }
+
+export function next_cousin(from: ParseTree) {
+    from = move_to_top_of_single_child_chain_only(from);
+    let cont: boolean = true;
+    let levels: number = 0;
+    let ind: number = -1;
+    while (cont) {
+        cont = false;
+        if (from.render_info && from.render_info.parent) {
+            ind = from.render_info.parent.children.indexOf(from);
+            if (ind === from.render_info.parent.children.length - 1) {
+                cont = true;
+                levels++;
+                if (from.render_info.parent.render_info) {
+                    from.render_info.parent.render_info.last_selected = ind;
+                }
+                from = move_to_top(from.render_info.parent);
+            }
+        }
+    }
+    if (ind === -1) return from;
+    from = from.children[ind + 1];
+
+    for (let i = 0; i < levels; i++) {
+        from = move_to_bottom(from.children[0], true);
+    }
+
+    return from;
+}
+
 
 export function prev_sibling(from: ParseTree) {
     from = mov_sibling(move_to_top_of_single_child_chain_only(from), -1);
