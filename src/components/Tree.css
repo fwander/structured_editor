@@ -9,6 +9,12 @@
     flex: 1;
 } */
 
+.test {
+    display: flex;
+    flex-direction: row;
+    gap: 3px;
+}
+
 .cursor-div {
     width: 1px;
     height: 20px;

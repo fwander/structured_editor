@@ -35,47 +35,60 @@ export type Rule = {
   lhs: Symbol;
   rhs: Symbol[];
   names: string[];
+  variant: number;
 }
 
 export const grammar: Rule[][] = [
   [ //S
     {lhs: Symbol.S, 
         rhs: [Symbol.A, Symbol.C],
-        names: ["", ""]},
+        names: ["", ""],
+        variant: 0,
+      },
   ], 
   [ //A
     {lhs: Symbol.A, 
         rhs: [Symbol.A, Symbol.B],
-        names: ["", ""]},
+        names: ["", ""],
+        variant: 0},
     {lhs: Symbol.A, 
         rhs: [],
-        names: [""]},
+        names: [""],
+        variant: 1},
   ],
   [ //B
     {lhs: Symbol.B, 
         rhs: [Symbol.a],
-        names: [""]},
+        names: [""],
+        variant: 0},
     {lhs: Symbol.B, 
         rhs: [Symbol.b],
-        names: [""]},
+        names: [""],
+        variant: 1},
   ],
   [ //C
     {lhs: Symbol.C, 
         rhs: [Symbol.c],
-        names: [""]},
+        names: [""],
+        variant: 0},
   ],
   [ //D
     {lhs: Symbol.D, 
         rhs: [Symbol.c],
-        names: [""]},
+        names: [""],
+        variant: 0},
   ],
   [ //E
     {lhs: Symbol.E, 
         rhs: [Symbol.A, Symbol.B, Symbol.C],
-        names: ["", "", ""]},
+        names: ["", "", ""],
+        variant: 0,
+      },
     {lhs: Symbol.E, 
         rhs: [Symbol.A, Symbol.D],
-        names: ["", ""]},
+        names: ["", ""],
+        variant: 1,
+      },
   ], 
 ]
 

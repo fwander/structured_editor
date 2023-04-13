@@ -7,7 +7,6 @@ export type RecognizerItem = {
   dot: number;
   from: number;
   concrete: boolean;
-  before: HashSet<Symbol>;
 }
 
 function recognizer_item_clone(item: RecognizerItem) {
@@ -16,7 +15,6 @@ function recognizer_item_clone(item: RecognizerItem) {
     dot: item.dot,
     from: item.from,
     concrete: item.concrete,
-    before: item.before.copy(),
   };
 }
 
@@ -68,12 +66,6 @@ function recognizer_item_str(item: RecognizerItem): string{
   if (item.concrete) {
     ret += "!";
   }
-  ret += '[';
-  for (const symbol of item.before.to_array()) {
-    ret += Symbol[symbol];
-    ret += ' ';
-  }
-  ret += ']';
   return ret;
 }
 
@@ -104,21 +96,24 @@ function item_str(item: Item | RecognizerItem): string{
 class ParseForest {
   children: Map<ParseForest, number>[] = [];
   data:Symbol;
+  variant: number;
   leaf?: ParseTree;
   start:number;
   flatten_memo: ParseTree[] = [];
   id: number;
   static last_id = 0;
-  constructor(data: Symbol, start: number, rhs?: Symbol[], leaf?: ParseTree){
+  constructor(data: Symbol, start: number, variant: number, rhs?: Symbol[], leaf?: ParseTree){
     this.data = data;
     this.start = start;
+    this.variant = variant;
     if (rhs) {
       for (const symbol of rhs) {
-        this.children.push(new Map([[new ParseForest(symbol,-1,undefined,{
+        this.children.push(new Map([[new ParseForest(symbol,-1,-1,undefined,{
           data: symbol,
           children: [],
           num_imagined: 1,
           start: -1,
+          variant: -1,
           end: -1,
         }),1]]));
       }
@@ -207,7 +202,7 @@ class ParseForest {
     }
     let ret: ParseTree[] = [];
     let next_ret: ParseTree[] = [];
-    let ret_root = {children: [], data: this.data, num_imagined: 0, start: this.start, end: this.start};
+    let ret_root = {children: [], data: this.data, num_imagined: 0, start: this.start, end: this.start, variant: this.variant};
     ret.push(ret_root);
     for (let i = 0; i < this.children.length; i++){
       for (const ret_tree of ret){
@@ -219,7 +214,8 @@ class ParseForest {
               num_imagined: ret_tree.num_imagined+tree.num_imagined, 
               data: this.data, 
               start: this.start, 
-              end: next_end
+              end: next_end,
+              variant: this.variant
             });
           }
         }
@@ -276,15 +272,17 @@ class ParseForest {
   }
 }
 
-export const defaultParseTree = {
+export const defaultParseTree: ParseTree = {
   children: [],
   data: Symbol.S,
   num_imagined: 0,
   start: 0,
   end: 1,
+  variant: 0,
   render_info: {
   reactiveSet: (to: ParseTree)=>{},
   last_selected: 0,
+  size: 0,
   cursor_index: 0,
   },
 };
@@ -293,6 +291,7 @@ export type RenderInfo = {
   reactiveSet: (to: ParseTree)=>void;
   last_selected: number;
   cursor_index: number;
+  size: number;
   parent?: ParseTree;
 }
 
@@ -311,6 +310,7 @@ export type ParseTree = {
   num_imagined: number;
   start: number;
   end: number;
+  variant: number;
   render_info?: RenderInfo;
 }
 
@@ -322,6 +322,7 @@ export function ptree_less_shallow(tree: ParseTree) {
     num_imagined: tree.num_imagined,
     start: tree.start,
     end: tree.end,
+    variant: tree.variant,
     render_info: tree.render_info,
   }
   for (let child of ret.children) {
@@ -342,6 +343,7 @@ export function ptree_shallow(tree: ParseTree) {
     num_imagined: tree.num_imagined,
     start: tree.start,
     end: tree.end,
+    variant: tree.variant,
     render_info: tree.render_info,
   }
   for (let child of ret.children) {
@@ -411,10 +413,10 @@ type StateSet = {
   from: number;
 };
 
-const DEBUG = true;
+const DEBUG = false;
 
 export function add_render_info(tree: ParseTree) {
-  function recurse(tree_inner: ParseTree, parent: ParseTree) {
+  function recurse(tree_inner: ParseTree, parent: ParseTree) : number{
     if (tree_inner.render_info) {
       tree_inner.render_info.parent = parent;
     }
@@ -423,11 +425,21 @@ export function add_render_info(tree: ParseTree) {
         reactiveSet: (to: ParseTree) => {},
         last_selected: 0,
         cursor_index: 0,
+        size: 0,
         parent: parent,
       }
     }
-    for (let child of tree_inner.children) {
-      recurse(child,tree_inner);
+    if (tree_inner.children.length === 0) {
+      tree_inner.render_info.size = 1;
+      return 1;
+    }
+    else {
+      let size = 0;
+      for (let child of tree_inner.children) {
+        size += recurse(child,tree_inner);
+      }
+      tree_inner.render_info.size = size;
+      return size;
     }
   }
   for (let child of tree.children) {
@@ -485,7 +497,7 @@ export function retokenize(to: ParseTree, adding: string, at: number) {
   return siblings;
 }
 
-function decompose(tree: ParseTree, depth: number, exception: ParseTree): [ParseTree[], ParseTree[], boolean] {
+export function decompose(tree: ParseTree, depth: number, exception?: ParseTree): [ParseTree[], ParseTree[], boolean] {
   let before: ParseTree[] = [];
   let after: ParseTree[] = [];
   let seen_exeption = false;
@@ -523,7 +535,7 @@ function get_zeroth_stateset() : HashSet<RecognizerItem>{
     }
     memo_stateset = new HashSet<RecognizerItem>(item_hash);
     grammar[0].forEach((rule)=>{
-      memo_stateset.add({rule: rule, dot: 0, from: 0, concrete: false, before: new HashSet((x)=>Symbol[x])});
+      memo_stateset.add({rule: rule, dot: 0, from: 0, concrete: false});
   });
   let unprocessed: RecognizerItem[] = memo_stateset.to_array();
   while(unprocessed.length > 0){
@@ -535,11 +547,7 @@ function get_zeroth_stateset() : HashSet<RecognizerItem>{
         dot: item.dot+1, 
         from: item.from,
         concrete: item.concrete,
-        before: item.before.copy().union(get_alphabet(item.rule.rhs[item.dot])).add(item.rule.rhs[item.dot]),
       });
-      if (was_there) {
-        was_there.before = was_there.before.union(item.before);
-      }
     }
     if (next_symbol && !is_term(next_symbol)) { //predict
       for (const rule of grammar[next_symbol - grammar_start]) {
@@ -549,7 +557,6 @@ function get_zeroth_stateset() : HashSet<RecognizerItem>{
           from: 0,
           // Nodes aren't concrete if they don't have concrete children -- and when we add the new items, they don't
           concrete: false,
-          before: new HashSet<Symbol>((x)=>Symbol[x]),
         });
       }
     }
@@ -587,13 +594,8 @@ function recognize_append(oldChart: HashSet<RecognizerItem>[], appending: ParseT
           dot: item.dot+1, 
           from: item.from,
           concrete: item.concrete,
-          before: item.before,
         }
-        let was_there = add_item(oldChart[index], unprocessed, adding );
-        if (was_there) {
-          was_there.before = was_there.before.union(item.before);
-          adding = was_there;
-        }
+        add_item(oldChart[index], unprocessed, adding );
       }
       if (i < len && next_symbol === appending[i].data){ //scan
         let adding = {
@@ -602,13 +604,8 @@ function recognize_append(oldChart: HashSet<RecognizerItem>[], appending: ParseT
           from: item.from,
           // nodes contining stream token are concrete
           concrete: true,
-          before: (index === 0)? item.before.copy() : item.before,
         }
-        let was_there = oldChart[index+1].has(adding);
         oldChart[index+1].add(adding);
-        if (was_there) {
-          was_there.before = was_there.before.union(adding.before);
-        }
       }
       if (next_symbol && !is_term(next_symbol)) { //predict
         for (const rule of grammar[next_symbol - grammar_start]) {
@@ -618,93 +615,85 @@ function recognize_append(oldChart: HashSet<RecognizerItem>[], appending: ParseT
             from: index,
             // Nodes aren't concrete if they don't have concrete children -- and when we add the new items, they don't
             concrete: false,
-            before: new HashSet<Symbol>((x)=>Symbol[x]),
           });
         }
       }
       else if (item.concrete && item.dot === item.rule.rhs.length) { //complete
+        let new_before = new HashSet<Symbol>((x)=>Symbol[x]);
         for (const checking of oldChart[item.from].to_array()) {
           if (checking.rule.rhs[checking.dot] === item.rule.lhs){
-            const new_before = item.before.copy().union(checking.before);
             let was_there = add_item(oldChart[index], unprocessed, {
               rule: checking.rule, 
               dot: checking.dot + 1, 
               from: checking.from,
               // Concreteness propagates up the tree
               concrete: true, 
-              before: new_before,
             });
-            if (was_there) {
-              was_there.before.union(new_before);
-            }
           }
         }
         continue;
       }
     }
   }
-  // if(DEBUG){
-  //   for (let i = 0; i < oldChart.length; i++) {
-  //     console.log("==="+i+"===");
-  //     for (const item of oldChart[i].to_array())
-  //       console.log(recognizer_item_str(item));
-  //   }
-  // }
+  if(DEBUG){
+    for (let i = 0; i < oldChart.length; i++) {
+      console.log("==="+i+"===");
+      for (const item of oldChart[i].to_array())
+        console.log(recognizer_item_str(item));
+    }
+  }
   return oldChart;
 }
 
-function insert_one(inserting: ParseTree, existing: HashSet<RecognizerItem>) {
-  const inserting_parse = recognize_append([], [inserting]);
-  if (inserting_parse.length !== 2) {
-    return false;
-  }
-  let inserting_last_set = inserting_parse[1];
-  console.log("inserting chart:");
-  for (let item of inserting_last_set.to_array()) {
-    console.log(recognizer_item_str(item));
-  }
-  for (let item of existing.to_array()) {
-    if (item.before.has(inserting.data) === undefined) {
-      existing.remove(item);
-    }
-    else {
-      let was_there = inserting_last_set.has(item);
-      if (was_there === undefined) {
-        existing.remove(item);
-      }
-      else {
-        console.log("found item!!!");
-        console.log(recognizer_item_str(was_there));
-        console.log(recognizer_item_str(item));
-        item.before.intersect(was_there.before);
-      }
-    }
-  }
-  console.log("resulting chart");
-  for (let item of existing.to_array()) {
-    console.log(recognizer_item_str(item));
-  }
-  if (existing.is_empty()) {
-    return false;
-  }
-  return true;
-}
+// function insert_one(inserting: ParseTree, existing: HashSet<RecognizerItem>) {
+//   const inserting_parse = recognize_append([], [inserting]);
+//   if (inserting_parse.length !== 2) {
+//     return false;
+//   }
+//   let inserting_last_set = inserting_parse[1];
+//   console.log("inserting chart:");
+//   for (let item of inserting_last_set.to_array()) {
+//     console.log(recognizer_item_str(item));
+//   }
+//   for (let item of existing.to_array()) {
+//     if (item.before.has(inserting.data) === undefined) {
+//       existing.remove(item);
+//     }
+//     else {
+//       let was_there = inserting_last_set.has(item);
+//       if (was_there === undefined) {
+//         existing.remove(item);
+//       }
+//       else {
+//         item.before.intersect(was_there.before);
+//       }
+//     }
+//   }
+//   console.log("resulting chart");
+//   for (let item of existing.to_array()) {
+//     console.log(recognizer_item_str(item));
+//   }
+//   if (existing.is_empty()) {
+//     return false;
+//   }
+//   return true;
+// }
 
 //check if a inserting parse can be continued by @check_against
-function recognize_insert(inserting: ParseTree[], existing: HashSet<RecognizerItem>[]): boolean {
-  if (inserting.length === 0 || existing.length === 0) {
-    return true;
-  }
-  let looking_at_index = inserting.length-1;
-  let existing_last_set = existing[existing.length-1];
-  while (looking_at_index >= 0) {
-    if (!insert_one(inserting[looking_at_index],existing_last_set)) {
-      return false;
-    }
-    looking_at_index -= 1;
-  }
-  return true;
-}
+// function recognize_insert(inserting: ParseTree[], existing: HashSet<RecognizerItem>[]): boolean {
+//   if (inserting.length === 0 || existing.length === 0) {
+//     return true;
+//   }
+//   let looking_at_index = inserting.length-1;
+//   let existing_last_set = existing[existing.length-1];
+//   while (looking_at_index >= 0) {
+//     if (!insert_one(inserting[looking_at_index],existing_last_set)) {
+//       return false;
+//     }
+//     looking_at_index -= 1;
+//   }
+//   return true;
+// }
 
 //get all of the non terms a chart parse recoginizes fully
 function get_results(chart: HashSet<RecognizerItem>[]): RecognizerItem[] {
@@ -721,7 +710,7 @@ function get_results(chart: HashSet<RecognizerItem>[]): RecognizerItem[] {
 }
 
 export function reparse(to: ParseTree, input_stream: ParseTree[]) : [ParseTree[], number]{
-  let steps_up = 0;
+  let steps_up = 0; //row
   let previous_target = to;
   let first_chart = recognize_append([],input_stream);
   let previous_row: [HashSet<RecognizerItem>[],ParseTree[]][] = [[first_chart,input_stream]];
@@ -746,10 +735,10 @@ export function reparse(to: ParseTree, input_stream: ParseTree[]) : [ParseTree[]
       console.log("=======target=======");
       console.log(ptree_str(target));
     }
-    let decomp_level = steps_up;
+    let decomp_level = 0; //column
     let current_row: [HashSet<RecognizerItem>[], ParseTree[]][] = [];
     while (true) {
-      let prev_index = Math.min(previous_row.length-1, decomp_level - steps_up);
+      let prev_index = Math.max(Math.min(previous_row.length-1, decomp_level - 1),0);
       let [prev_chart, prev_stream] = previous_row[prev_index];
       if (prev_chart.length === 0) {
         current_row.push([[],[]]);
@@ -757,13 +746,27 @@ export function reparse(to: ParseTree, input_stream: ParseTree[]) : [ParseTree[]
         continue;
       }
       let [before, after, shouldnt_continue] = decompose(target,decomp_level,previous_target);
-      if (!shouldnt_continue && (decomp_level - steps_up) >= previous_row.length-1) {
-        let new_prev_chart = [new HashSet<RecognizerItem>(item_hash)];
-        for (const prev_item of prev_chart[prev_chart.length-1].to_array()) {
-          new_prev_chart[0].add(recognizer_item_clone(prev_item));
+      let can_skip = !get_results(prev_chart).some((x)=>x.rule.lhs === target.data);
+      if (can_skip) {
+        if (shouldnt_continue) {
+          return [[],steps_up]; 
         }
-        prev_chart = new_prev_chart;
+        current_row.push([[],[]]);
+        decomp_level++;
+        continue;
       }
+      let chart = prev_chart;
+      if (before.length !== 0) {
+        chart = recognize_append([],before.concat(prev_stream));
+      }
+      // if (!shouldnt_continue && (decomp_level - steps_up) >= previous_row.length-1) {
+      //   let new_prev_chart = prev_chart.splice(prev_chart.length-1,1);
+      //   new_prev_chart.push(new HashSet<RecognizerItem>(item_hash));
+      //   for (const prev_item of prev_chart[prev_chart.length-1].to_array()) {
+      //     new_prev_chart[new_prev_chart.length-1].add(recognizer_item_clone(prev_item));
+      //   }
+      //   prev_chart = new_prev_chart;
+      // }
       if (DEBUG) {
         console.log("before");
         for (const tree of before) {
@@ -788,7 +791,7 @@ export function reparse(to: ParseTree, input_stream: ParseTree[]) : [ParseTree[]
             console.log(recognizer_item_str(item));
         }
       }
-      let can_insert = recognize_insert(before,prev_chart);
+      let can_insert = chart[chart.length-1].to_array().length !== 0;
       if (!can_insert) {
         current_row.push([[],[]]);
         decomp_level++;
@@ -803,9 +806,14 @@ export function reparse(to: ParseTree, input_stream: ParseTree[]) : [ParseTree[]
         }
         let new_chart = recognize_append(prev_chart,after);
         results = get_results(new_chart);
-        let valid = results.filter((t)=>t.rule.lhs===target.data);
         let new_stream = before.concat(prev_stream).concat(after);
-        current_row.push([new_chart,new_stream]);
+        if (results.length !== 0) {
+          current_row.push([new_chart,new_stream]);
+        }
+        else {
+          current_row.push([[],[]]);
+        }
+        let valid = results.filter((t)=>t.rule.lhs===target.data);
         if (valid.length !== 0) {
           let ret = parse(new_stream,target.render_info!.parent? true : false);
           return [ret, steps_up];
@@ -843,7 +851,7 @@ export function parse(stream: ParseTree[], any_target = false){
   const len = stream.length;
   let state_sets = new Array(len+1).fill(0).map((z: number, i: number) => {return {items: new HashSet<Item>(item_hash), from: i }});
   grammar[0].forEach((rule)=>{
-    state_sets[0].items.add({rule: rule, dot: 0, from: 0, concrete: false, forest: new ParseForest(grammar_start,0,rule.rhs)})
+    state_sets[0].items.add({rule: rule, dot: 0, from: 0, concrete: false, forest: new ParseForest(grammar_start,0,rule.variant,rule.rhs)})
   });
 
   for (let i = 0; i <= len; i++) {
@@ -861,7 +869,7 @@ export function parse(stream: ParseTree[], any_target = false){
         });
       }
       if (i < len && next_symbol === stream[i].data){ //scan
-        let new_tree = new ParseForest(stream[i].data,i,undefined,stream[i]);
+        let new_tree = new ParseForest(stream[i].data,i,item.rule.variant,undefined,stream[i]);
         item.forest.add_child(item.dot,new_tree);
         state_sets[i+1].items.add({
           rule: item.rule,
@@ -874,7 +882,7 @@ export function parse(stream: ParseTree[], any_target = false){
       }
       if (next_symbol && !is_term(next_symbol)) { //predict
         for (const rule of grammar[next_symbol - grammar_start]) {
-          let parse_forest = new ParseForest(rule.lhs,i, rule.rhs);
+          let parse_forest = new ParseForest(rule.lhs,i, item.rule.variant, rule.rhs);
           add_item(state_sets[i].items, unprocessed, {
             rule: rule, 
             dot: 0, 
@@ -952,7 +960,7 @@ export function tokenize(stream: string){
         const ind = match[0].length;
         if (ind > max_len) {
           max_len = ind;
-          max_token = {data: toke_type, children: [], token: slice.slice(0,max_len), num_imagined: 0, start: token_index,end: token_index+1};
+          max_token = {data: toke_type, children: [], token: slice.slice(0,max_len), num_imagined: 0, start: token_index, end: token_index+1, variant: -1};
         }
       }
       toke_type += 1;

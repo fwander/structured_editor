@@ -1,9 +1,70 @@
 
 import { createSignal, createEffect, JSX, Component } from "solid-js";
 import { grammar_start, is_list, is_term, Symbol } from "~/gen/grammar";
-import { add_render_info, concreteify, defaultParseTree, get_root, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, reparse, retokenize, tokenize } from "~/parse";
+import { add_render_info, concreteify, decompose, defaultParseTree, get_root, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, reparse, retokenize, tokenize } from "~/parse";
 import { Tree } from "./Tree";
-import { child, next_sibling, parent, prev_sibling } from "~/navigate";
+import { child, is_box, lca_prevcousin, next_sibling, parent, prev_cousin, prev_sibling } from "~/navigate";
+
+let global_cursor_index = 0;
+let height = 0;
+
+function getNthLeaf(n: number, root: ParseTree): ParseTree | undefined {
+    if (n === 0 && root.children.length === 0) {
+        return root;
+    }
+    
+    for (let i = 0; i < root.children.length; i++) {
+        if (n < root.children[i].render_info!.size) {
+            return getNthLeaf(n, root.children[i]);
+        }
+        n -= root.children[i].render_info!.size;
+    }
+
+    return undefined;
+}
+
+function getTreeWithCoords(root: ParseTree, leaf_ind: number, leaf_height: number): ParseTree | undefined {
+    let tokTree = getNthLeaf(leaf_ind, root);
+    if (tokTree === undefined) {
+        alert("AAAHHH");
+        return undefined;
+    }
+
+    for (let i = 0; i < leaf_height && tokTree.render_info!.parent; i++) {
+        tokTree = tokTree.render_info!.parent;
+    }
+
+    return tokTree;
+}
+
+function getLeafInd(node: ParseTree): [number, ParseTree] {
+    let nPrev: number = 0;
+    let parent = node.render_info!.parent;
+    while (parent) {
+        let ind: number = parent.children.indexOf(node);
+        for(let i = 0; i < ind; i++) {
+            nPrev += parent.children[i].render_info!.size;
+        }
+
+        node = parent;
+        parent = node.render_info!.parent;
+    }
+    return [nPrev, node];
+}
+
+function getHeight(node: ParseTree): number {
+    let depth: number = 0;
+    while (node.children.length !== 0) {
+        depth++;
+        node = node.children[0];
+    }
+    return depth;
+}
+
+function getCoords(node: ParseTree): [number, number, ParseTree] {
+    let [w, ptre] = getLeafInd(node);
+    return [w, getHeight(node), ptre];
+}
 
 function isAlphaNumeric(str: string) {
     var code, i, len;
@@ -20,76 +81,171 @@ function isAlphaNumeric(str: string) {
   };
 
 // null if can't make edit
-function getStreamAndTarget(event: KeyboardEvent, cursor: ParseTree): [stream: ParseTree[], target: ParseTree] | [null, null] {
+function getTarget(event: KeyboardEvent, cursor: ParseTree): ParseTree | null {
     let adding_char = "";
     let insert_mode = true;
     if (!cursor || !cursor.render_info) {
-        return [null, null];
+        return null;
     }
     if (event.key.length === 1 && isAlphaNumeric(event.key)) {
         adding_char = event.key;
     }
     if (!adding_char) {
         if (event.key != "Backspace") {
-            return [null, null];
+            return null;
         }
     }
     let stream: ParseTree[] = [];
     let target: ParseTree;
-    if (cursor.children.length === 0 && !cursor.token) { 
-        // cursor is an imagined non term if these are true
-        if (adding_char.length !== 0) {
+    if (adding_char.length !== 0) { //addition
+        if (cursor.children.length === 0 && !cursor.token) { 
+            // cursor is an imagined non term if these are true
             stream = tokenize(event.key);
+            target = cursor;
+            target.children  = stream;
+            return target;
         }
-        else {
-            stream = [];
-        }
-        target = cursor;
-        return [stream, target]
-    }
-    else {
         const parent = cursor.render_info.parent;
         if (!parent) {
-            return [null,null];
+            return null;
         }
         target = parent;
         let index = parent.children.indexOf(cursor);
-        if (adding_char.length !== 0) {
-            //target_clone.children.splice(index+1,0,{data: Symbol.unknown, children: [], token: event.key, start: 0, end: 0, num_imagined: 0});
-            // stream = retokenize(target,event.key,index);
-            if (is_term(cursor.data) && cursor.token) {
-                const cursor_index = cursor.render_info.cursor_index;
-                const token = cursor.token;
-                let result = tokenize(token.slice(0,cursor_index) + adding_char + token.slice(cursor_index))
-                console.log("result");
-                for (const tree of result) {
-                    console.log(ptree_str(tree));
-                }
-                target.children.splice(index,1);
-                target.children.splice(index,0,...result);
-                stream = target.children;
-            }
-            else {
-                target.children.splice(index+1,0,...tokenize(adding_char));
-                stream = target.children;
-            }
+        if (is_term(cursor.data) && cursor.token) {
+            const cursor_index = cursor.render_info.cursor_index;
+            const token = cursor.token;
+            let result = tokenize(token.slice(0,cursor_index) + adding_char + token.slice(cursor_index))
+            target.children.splice(index,1,...result);
+            stream = target.children;
         }
         else {
-            let prev = target;
-            while(target.children.length === 1 && target.render_info!.parent) {
-                prev = target;
-                target = target.render_info!.parent;
+            let delta = 1;
+            if (target.render_info?.cursor_index === 0) {
+                delta = 0;
             }
-            index = target.children.indexOf(prev);
-            target.children.splice(index,1);
-            stream = retokenize(target,"",Math.min(index-1,0));  //TODO maybe we don't need this math.min
-            for (let i = 0; i < stream.length; i++) {
-                stream[i].start = i;
-                stream[i].end = i+1;
+            target.children.splice(index+delta,0,...tokenize(adding_char));
+            stream = target.children;
+        }
+    } 
+    else { //deletion
+        const parent = cursor.render_info.parent;
+        if (!parent) {
+            return null;
+        }
+        target = parent;
+        target = del(cursor, target);
+    }
+    return target;
+}
+
+function obliterate(target: ParseTree) {
+    let prev = target;
+    do {
+        prev = target;
+        target = target.render_info!.parent!;
+    } while(target.children.length === 1 && target.render_info!.parent);
+    let index = target.children.indexOf(prev);
+    target.children.splice(index,1);
+    return target;
+}
+
+function del(cursor: ParseTree, parent: ParseTree) {
+    if (!cursor.render_info || !cursor.render_info.parent) {
+        return cursor;
+    }
+    if (is_term(cursor.data) && cursor.token !== undefined) {
+        let index = cursor.render_info.parent.children.indexOf(cursor);
+        if (cursor.render_info.cursor_index !== 0) {
+            const cursor_index = cursor.render_info.cursor_index;
+            const token = cursor.token;
+            if (token.length === 1) {
+                return obliterate(parent);
+            }
+            let result = tokenize(token.slice(0,cursor_index-1) + token.slice(cursor_index))
+            parent.children.splice(index,1,...result);
+            return parent;
+        }
+        else {
+            const res = lca_prevcousin(cursor);
+            if (res === null) {
+                return cursor;
+            }
+            const [[lca, cursor_depth],[prev,prev_depth]] = res;
+            if (is_term(prev.data) && prev.token !== undefined) {
+                const token_stream = tokenize(prev.token.concat(cursor.token));
+                let can_tokenize = true;
+                if (token_stream.length !== 1) {
+                    can_tokenize = false;
+                }
+                if (can_tokenize && token_stream[0].data === Symbol.unknown) {
+                    can_tokenize = false;
+                }
+                if (can_tokenize) {
+                    const depth = Math.max(prev_depth,cursor_depth);
+                    const [new_stream, , ] = decompose(lca,depth,undefined);
+                    cursor.children = new_stream;
+                    return parent;
+                }
+                else {
+                    const nav_prev = prev_cousin(cursor);
+                    if (nav_prev === cursor) {
+                        return cursor;
+                    }
+                    return obliterate(prev_cousin(cursor));
+                }
             }
         }
     }
-    return [stream, target];
+    else if (cursor.children.length !== 0) {
+        if (cursor.render_info.cursor_index === 1) {
+            return obliterate(cursor);
+        }
+        else {
+            const nav_prev = prev_cousin(cursor);
+            if (nav_prev === cursor) {
+                return cursor;
+            }
+            return obliterate(prev_cousin(cursor));
+        }
+    }
+    else if (is_box(cursor)) {
+        const left_sibling = prev_sibling(cursor);
+        const right_sibling = next_sibling(cursor);
+        if (left_sibling === right_sibling) {
+            return obliterate(cursor);
+        }
+        if (!left_sibling.token) {
+            return obliterate(left_sibling)
+        }
+        if (!right_sibling.token || right_sibling === cursor) {
+            left_sibling.token.substring(0,left_sibling.token.length-1);
+            if (left_sibling.token.length === 0) {
+                return obliterate(left_sibling);
+            }
+            return parent;
+        }
+        const token_stream = tokenize(left_sibling.token.concat(right_sibling.token));
+        let can_tokenize = true;
+        if (token_stream.length !== 1) {
+            can_tokenize = false;
+        }
+        if (can_tokenize && token_stream[0].data === Symbol.unknown) {
+            can_tokenize = false;
+        }
+        if (can_tokenize) {
+            const index = cursor.render_info.parent.children.indexOf(cursor);
+            cursor.children.splice(index,2,token_stream[0]);
+            return cursor;
+        }
+        else {
+            const nav_prev = prev_cousin(cursor);
+            if (nav_prev === cursor) {
+                return cursor;
+            }
+            return obliterate(prev_cousin(cursor));
+        }
+    }
+    return cursor;
 }
 
 export const [insertMode, setInsertMode] = createSignal<boolean>(false);
@@ -148,10 +304,12 @@ export const Editor: Component = () => {
       }
   
       if (insertMode()) {
-        let [stream,target] = getStreamAndTarget(event,focusedNode());
-        if (!stream || !target) {
+        let [leafI, heI, rt] = getCoords(focusedNode());
+        let target = getTarget(event,focusedNode());
+        if (!target) {
             return;
         }
+        let stream = target.children;
         let [newSubTrees, up] = reparse(target,stream);
         if (newSubTrees.length === 0) { 
             add_render_info(target);
@@ -171,9 +329,15 @@ export const Editor: Component = () => {
             looking_at = looking_at.render_info?.parent;
             up -= 1;
         }
+        console.log("looking at");
+        console.log(ptree_str(looking_at));
+        console.log("setting to");
+        console.log(ptree_str(newSubTrees[0]));
         set_node(looking_at,newSubTrees[0]);
         console.log("new tree");
         console.log(ptree_str(get_root(newSubTrees[0])));
+        setFocusedNode(getTreeWithCoords(rt, leafI, heI)!);
+
     }
   };
 

@@ -132,3 +132,68 @@ export function child(from: ParseTree) {
     let ind = from.render_info!.last_selected;
     return move_to_bottom(from.children[ind]);
 }
+export function prev_cousin(from: ParseTree): ParseTree {
+    let lca_height_from_from: number = 1;
+    let prevcousin_depth_from_lca: number = 0;
+
+    let lca: ParseTree = from.render_info!.parent!;
+    let curr: ParseTree = from;
+    let walk_down = first_previous_nonbox_child(lca,curr);
+    while (walk_down !== null) {
+        curr = lca;
+        if (lca.render_info!.parent) {
+            lca_height_from_from++;
+            lca = lca.render_info!.parent!;
+        } else {
+            return from;
+        }
+        walk_down = first_previous_nonbox_child(lca,curr);
+    }
+    while (walk_down!.children.length !== 0 && prevcousin_depth_from_lca < lca_height_from_from) {
+        walk_down = walk_down!.children[walk_down!.children.length-1]
+        prevcousin_depth_from_lca++;
+    }
+    return walk_down!;
+}
+
+export function lca_prevcousin(from: ParseTree): [[ParseTree, number],[ParseTree, number]] | null {
+    let lca_height_from_from: number = 1;
+    let prevcousin_depth_from_lca: number = 0;
+
+    let lca: ParseTree = from.render_info!.parent!;
+    let curr: ParseTree = from;
+    let walk_down = first_previous_nonbox_child(lca,curr);
+    while (walk_down !== null) {
+        curr = lca;
+        if (lca.render_info!.parent) {
+            lca_height_from_from++;
+            lca = lca.render_info!.parent!;
+        } else {
+            return null;
+        }
+        walk_down = first_previous_nonbox_child(lca,curr);
+    }
+    while (walk_down!.children.length !== 0) {
+        walk_down = walk_down!.children[walk_down!.children.length-1]
+        prevcousin_depth_from_lca++;
+    }
+    return [[lca,lca_height_from_from],[walk_down!,prevcousin_depth_from_lca]];
+}
+
+// null when first non box child
+function first_previous_nonbox_child(parent: ParseTree, child: ParseTree): ParseTree | null {
+    let n: number = parent.children.indexOf(child);
+    for (let i = n - 1; i >= 0; i--) {
+        if (parent.children[n] === child) {
+            return null;
+        }
+        if (!is_box(parent.children[n])) {
+            return parent.children[n];
+        }
+    }
+    return null;
+}
+
+export function is_box(n: ParseTree) {
+    return n.children.length === 0 && n.token !== undefined;
+}

@@ -83,17 +83,26 @@ export const Tree: Component<TreeProps> = (props) => {
           <div class="text-wrapper">{tree().token}</div>
         
         : 
-         (children().length !== 0)? <div>
-          <For each={children()}>
-            {(child, i) => (
-              <Tree node={child} focusedNode={props.focusedNode} onFocus={props.onFocus} parent={tree()} index={i()} length={children().length}/>
-            )}
-          </For>
-        </div> 
-        : 
-        <div class="text-wrapper">
-          empty
-        </div>
+         (children().length !== 0)? 
+          <div class="text-wrapper">
+            {(tree() === props.focusedNode() && insertMode() && tree().render_info?.cursor_index === 0)?
+            <div class="cursor-div"></div> : null
+            }
+            <div class="test">
+              <For each={children()}>
+                {(child, i) => (
+                  <Tree node={child} focusedNode={props.focusedNode} onFocus={props.onFocus} parent={tree()} index={i()} length={children().length}/>
+                )}
+              </For>
+            </div>
+            {tree() === props.focusedNode() && insertMode() && (tree().render_info?.cursor_index !== 0)?
+            <div class="cursor-div"></div> : null
+            }
+          </div> 
+          : 
+          <div class="text-wrapper">
+            empty
+          </div>
         }
       </div>
     </>
