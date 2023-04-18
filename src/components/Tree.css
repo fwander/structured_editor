@@ -2,16 +2,21 @@
     background-color: rgb(181, 213, 242);
 }
 
+.keyword {
+    color: cadetblue;
+}
+
 .text-wrapper {
     display: flex;
+    flex-direction: row;
 }
 /* .first-div, .second-div {
-    flex: 1;
+    flex: 
 } */
 
-.test {
+.horiz {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     gap: 3px;
 }
 

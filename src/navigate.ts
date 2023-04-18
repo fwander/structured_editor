@@ -1,9 +1,13 @@
 import { is_list } from "./gen/grammar";
-import { ParseTree } from "./parse";
+import { ParseTree, ptree_str } from "./parse";
 
-function move_to_bottom(from: ParseTree, go_first: boolean = false) {
+function move_to_bottom(from: ParseTree, go_first?: number) {
+    let passed_in = go_first;
     while (from && from.render_info && (from.children.length === 1 || (is_list(from.data) && from.children.length !== 0 && (from.render_info.parent && from.render_info.parent.data === from.data)))) {
-        from = from.children[go_first ? 0 : from.render_info.last_selected];
+        if (passed_in === -1) {
+            go_first = from.children.length-1;
+        }
+        from = from.children[go_first ? go_first : from.render_info.last_selected];
     }
 
     return from;
@@ -72,33 +76,92 @@ function mov_sibling(from: ParseTree, delta: number) {
     return parent.children[ind];
 }
 
-export function next_cousin(from: ParseTree) {
-    from = move_to_top_of_single_child_chain_only(from);
-    let cont: boolean = true;
+function adj_cousin(from: ParseTree, is_next: boolean): [ParseTree, ParseTree] {
+    let orig = from;
     let levels: number = 0;
-    let ind: number = -1;
+    let cont: boolean = true;
     while (cont) {
         cont = false;
-        if (from.render_info && from.render_info.parent) {
-            ind = from.render_info.parent.children.indexOf(from);
-            if (ind === from.render_info.parent.children.length - 1) {
-                cont = true;
-                levels++;
-                if (from.render_info.parent.render_info) {
-                    from.render_info.parent.render_info.last_selected = ind;
-                }
-                from = move_to_top(from.render_info.parent);
-            }
+        if (from.render_info && !from.render_info.parent) {
+            return [orig, from];
+        }
+
+        let next_sib = is_next ? next_sibling(from) : prev_sibling(from);
+        if (next_sib === from) {
+            cont = true;
+            levels++;
+            from = parent(from);
+        } else {
+            from = next_sib;
         }
     }
-    if (ind === -1) return from;
-    from = from.children[ind + 1];
+    let lca = from;
 
+    let ind = is_next ? 0 : -1;
+    let last_from = from;
     for (let i = 0; i < levels; i++) {
-        from = move_to_bottom(from.children[0], true);
+        from = child(from, ind);
+        if (!from) {
+            return [last_from,lca];
+        }
+        last_from = from;
     }
 
-    return from;
+    return [from, lca];
+}
+
+export function lca_nav_right(from: ParseTree): [ParseTree, number, ParseTree, number] {
+    let [prev, lca] = adj_cousin(from, true);
+    let distance_to_cur = 0;
+    let looking_at = from;
+    while (looking_at.render_info?.parent) {
+        looking_at = looking_at.render_info.parent;
+        distance_to_cur++;
+        if (looking_at === lca) {
+            break;
+        }
+    }
+    let distance_to_prev = 0;
+    looking_at = prev;
+    while (looking_at.render_info?.parent) {
+        looking_at = looking_at.render_info.parent;
+        distance_to_prev++;
+        if (looking_at === lca) {
+            break;
+        }
+    }
+    return [prev, distance_to_prev, lca, distance_to_cur];
+}
+export function lca_nav_left(from: ParseTree): [ParseTree, number, ParseTree, number] {
+    let [prev, lca] = adj_cousin(from, false);
+    let distance_to_cur = 0;
+    let looking_at = from;
+    while (looking_at.render_info?.parent) {
+        looking_at = looking_at.render_info.parent;
+        distance_to_cur++;
+        if (looking_at === lca) {
+            break;
+        }
+    }
+    let distance_to_prev = 0;
+    looking_at = prev;
+    while (looking_at.render_info?.parent) {
+        looking_at = looking_at.render_info.parent;
+        distance_to_prev++;
+        if (looking_at === lca) {
+            break;
+        }
+    }
+    return [prev, distance_to_prev, lca, distance_to_cur];
+}
+
+export function nav_right(from: ParseTree): ParseTree {
+    let [ret, _] = adj_cousin(from, true);
+    return ret;
+}
+export function nav_left(from: ParseTree): ParseTree {
+    let [ret, _] = adj_cousin(from, false);
+    return ret;
 }
 
 
@@ -121,7 +184,7 @@ export function parent(from: ParseTree) {
     return move_to_top(from.render_info.parent);
 }
 
-export function child(from: ParseTree) {
+export function child(from: ParseTree, go_first?: number) {
     if (!from.render_info) {
         return from;
     }
@@ -130,32 +193,14 @@ export function child(from: ParseTree) {
     }
 
     let ind = from.render_info!.last_selected;
-    return move_to_bottom(from.children[ind]);
-}
-export function prev_cousin(from: ParseTree): ParseTree {
-    let lca_height_from_from: number = 1;
-    let prevcousin_depth_from_lca: number = 0;
-
-    let lca: ParseTree = from.render_info!.parent!;
-    let curr: ParseTree = from;
-    let walk_down = first_previous_nonbox_child(lca,curr);
-    while (walk_down !== null) {
-        curr = lca;
-        if (lca.render_info!.parent) {
-            lca_height_from_from++;
-            lca = lca.render_info!.parent!;
-        } else {
-            return from;
+    if (go_first) {
+        if (go_first === -1) {
+            go_first = from.children.length-1;
         }
-        walk_down = first_previous_nonbox_child(lca,curr);
+        ind = go_first;
     }
-    while (walk_down!.children.length !== 0 && prevcousin_depth_from_lca < lca_height_from_from) {
-        walk_down = walk_down!.children[walk_down!.children.length-1]
-        prevcousin_depth_from_lca++;
-    }
-    return walk_down!;
+    return move_to_bottom(from.children[ind], go_first);
 }
-
 export function lca_prevcousin(from: ParseTree): [[ParseTree, number],[ParseTree, number]] | null {
     let lca_height_from_from: number = 1;
     let prevcousin_depth_from_lca: number = 0;
@@ -195,5 +240,5 @@ function first_previous_nonbox_child(parent: ParseTree, child: ParseTree): Parse
 }
 
 export function is_box(n: ParseTree) {
-    return n.children.length === 0 && n.token !== undefined;
+    return n.children.length === 0 && (n.token === undefined || n.token.length === 0);
 }

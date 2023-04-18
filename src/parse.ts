@@ -1,5 +1,8 @@
+import { AST, S_AST } from "./ast";
+import { setFocusedNode } from "./components/Editor";
 import { defaults, grammar, grammar_start, is_list, is_term, regexes, Rule, Symbol } from "./gen/grammar";
 import HashSet from "./HashSet";
+import { is_box } from "./navigate";
 import { get_alphabet } from "./nonterm_alphabets";
 
 export type RecognizerItem = {
@@ -108,7 +111,8 @@ class ParseForest {
     this.variant = variant;
     if (rhs) {
       for (const symbol of rhs) {
-        this.children.push(new Map([[new ParseForest(symbol,-1,-1,undefined,{
+        this.children.push(new Map([[new ParseForest(symbol,-1,-1,undefined,
+          {
           data: symbol,
           children: [],
           num_imagined: 1,
@@ -122,20 +126,8 @@ class ParseForest {
     this.id = ParseForest.last_id++;
   }
   add_child(index: number, child: ParseForest) {
-    let proper_start = this.start;
-
-    //if (child.start !== proper_start) return;
-    //if (this.children[index+1] && this.children[index+1][0]) {
-      //const next_child = this.children[index+1][0]
-      //const proper_end = this.children[index+1][0].start;
-      //if (child.end !== proper_end) return;
-    //}
-
     let amount = this.children[index].get(child) ?? 0;
     this.children[index].set(child,amount + 1);
-    //if (this.children.length - 1 == index && child.end > child.start) {
-      //this.end = child.end;
-    //}
   }
   to_string() {
     let ret = "";
@@ -254,7 +246,6 @@ class ParseForest {
       if (has_conversion(t,t.data)) return false;
       if (t.num_imagined > min_imagined[t.end]) return false;
 
-      //TODO maybe restrict parses to left most here?
       return true;
     }
 
@@ -282,16 +273,21 @@ export const defaultParseTree: ParseTree = {
   render_info: {
   reactiveSet: (to: ParseTree)=>{},
   last_selected: 0,
+  focus_flag: true,
   size: 0,
   cursor_index: 0,
   },
 };
 
+defaultParseTree.render_info!.ast = new S_AST(defaultParseTree);
+
 export type RenderInfo = {
   reactiveSet: (to: ParseTree)=>void;
   last_selected: number;
   cursor_index: number;
+  focus_flag: boolean;
   size: number;
+  ast?: AST;
   parent?: ParseTree;
 }
 
@@ -388,6 +384,12 @@ export function ptree_str(t: ParseTree, indent = ""){
     else if (!is_term(t.data)) {
       ret += "(" + t.start + ", " + t.end + ")";
     }
+    if (t.token) {
+      ret += "\"" + t.token + "\"";
+    }
+    if (is_box(t)) {
+      ret += "BOX";
+    }
     ret += "\n";
     for (const child of t.children) {
       helper(child,ind+"\t");
@@ -419,6 +421,18 @@ export function add_render_info(tree: ParseTree) {
   function recurse(tree_inner: ParseTree, parent: ParseTree) : number{
     if (tree_inner.render_info) {
       tree_inner.render_info.parent = parent;
+      if (tree_inner.render_info!.cursor_index === -1) {
+        if (tree_inner.token) {
+          tree_inner.render_info!.cursor_index = tree_inner.token.length;
+        }
+        else {
+          tree_inner.render_info!.cursor_index = 1;
+        }
+      }
+      if (tree_inner.render_info.focus_flag) {
+        tree_inner.render_info.focus_flag = false;
+        setFocusedNode(tree_inner);
+      }
     }
     else {
       tree_inner.render_info = {
@@ -426,6 +440,7 @@ export function add_render_info(tree: ParseTree) {
         last_selected: 0,
         cursor_index: 0,
         size: 0,
+        focus_flag: false,
         parent: parent,
       }
     }
@@ -453,8 +468,24 @@ export function concreteify(tree: ParseTree, start=0): number{
     if (!tree.token && is_term(tree.data) && defaults[tree.data].length !== 0) {
       tree.token = defaults[tree.data];
     }
-    tree.end = start+1;
-    return start + 1;
+    if (!is_term(tree.data) && grammar[tree.data - grammar_start].length === 1) {
+      console.log("adding");
+      console.log(Symbol[tree.data]);
+      tree.children = grammar[tree.data - grammar_start][0].rhs.map(
+        (x)=>{ return { 
+                data: x,
+                children: [],
+                num_imagined: 1,
+                start: -1,
+                variant: -1,
+                end: -1,
+              }
+      });
+    }
+    else {
+      tree.end = start+1;
+      return start + 1;
+    }
   }
   for (let child of tree.children) {
     start = concreteify(child, start);
@@ -486,7 +517,6 @@ export function retokenize(to: ParseTree, adding: string, at: number) {
       siblings.splice(index,1,...tokenize(adding.concat(siblings[index].token? siblings[index].token! : "")));
       return siblings;
     }
-    console.log("INDEX",index);
     if (index !== 0 && is_term(siblings[index-1].data)) {
       siblings.splice(index-1,1,...tokenize(adding.concat(siblings[index-1].token? siblings[index-1].token! : "")));
       return siblings;
@@ -511,11 +541,13 @@ export function decompose(tree: ParseTree, depth: number, exception?: ParseTree)
       if (tree_inner.children.length !== 0) {
         should_break = false;
       }
-      if (seen_exeption) {
-        after.push(tree_inner)
-      }
-      else {
-        before.push(tree_inner)
+      if (!is_box(tree_inner)) {
+        if (seen_exeption) {
+          after.push(tree_inner)
+        }
+        else {
+          before.push(tree_inner)
+        }
       }
       return;
     }
@@ -645,56 +677,6 @@ function recognize_append(oldChart: HashSet<RecognizerItem>[], appending: ParseT
   return oldChart;
 }
 
-// function insert_one(inserting: ParseTree, existing: HashSet<RecognizerItem>) {
-//   const inserting_parse = recognize_append([], [inserting]);
-//   if (inserting_parse.length !== 2) {
-//     return false;
-//   }
-//   let inserting_last_set = inserting_parse[1];
-//   console.log("inserting chart:");
-//   for (let item of inserting_last_set.to_array()) {
-//     console.log(recognizer_item_str(item));
-//   }
-//   for (let item of existing.to_array()) {
-//     if (item.before.has(inserting.data) === undefined) {
-//       existing.remove(item);
-//     }
-//     else {
-//       let was_there = inserting_last_set.has(item);
-//       if (was_there === undefined) {
-//         existing.remove(item);
-//       }
-//       else {
-//         item.before.intersect(was_there.before);
-//       }
-//     }
-//   }
-//   console.log("resulting chart");
-//   for (let item of existing.to_array()) {
-//     console.log(recognizer_item_str(item));
-//   }
-//   if (existing.is_empty()) {
-//     return false;
-//   }
-//   return true;
-// }
-
-//check if a inserting parse can be continued by @check_against
-// function recognize_insert(inserting: ParseTree[], existing: HashSet<RecognizerItem>[]): boolean {
-//   if (inserting.length === 0 || existing.length === 0) {
-//     return true;
-//   }
-//   let looking_at_index = inserting.length-1;
-//   let existing_last_set = existing[existing.length-1];
-//   while (looking_at_index >= 0) {
-//     if (!insert_one(inserting[looking_at_index],existing_last_set)) {
-//       return false;
-//     }
-//     looking_at_index -= 1;
-//   }
-//   return true;
-// }
-
 //get all of the non terms a chart parse recoginizes fully
 function get_results(chart: HashSet<RecognizerItem>[]): RecognizerItem[] {
   let ret = [];
@@ -709,23 +691,113 @@ function get_results(chart: HashSet<RecognizerItem>[]): RecognizerItem[] {
   return ret;
 }
 
-export function reparse(to: ParseTree, input_stream: ParseTree[]) : [ParseTree[], number]{
+function left_and_right(from: ParseTree): [ParseTree[], ParseTree[]] {
+  let left: ParseTree[] = [];
+  let right: ParseTree[] = [];
+  let looking_at = from;
+  while (looking_at.render_info?.parent) {
+    const parent = looking_at.render_info.parent;
+    let left_of_looking_at = true;
+    let ind = 0;
+    for (const sibling of parent.children) {
+      if (sibling !== looking_at) {
+        if (left_of_looking_at) {
+          left.splice(ind,0,sibling);
+          ind++;
+        }
+        else {
+          right.push(sibling);
+        }
+      }
+      else {
+        left_of_looking_at = false;
+      }
+    }
+    looking_at = parent;
+  }
+  return [left,right];
+}
+
+function mutationFilter<T>(arr: T[], cb: (x: T)=>boolean) {
+  for (let l = arr.length - 1; l >= 0; l -= 1) {
+    if (!cb(arr[l])) arr.splice(l, 1);
+  }
+}
+
+function decompose_edge(stream: ParseTree[], is_right_edge: boolean) : ParseTree[] {
+  let ind = 0;
+  if (is_right_edge) {
+    ind = stream.length-1;
+  }
+  let looking_at = stream[ind];
+  while(!is_term(looking_at.data)) {
+    stream.splice(ind,1,...looking_at.children);
+    if (is_right_edge) {
+      ind = stream.length-1;
+    }
+    looking_at = stream[ind];
+  }
+  mutationFilter(stream, (x)=>!is_box(x));
+  if (is_right_edge) {
+    ind = stream.length-1;
+  }
+  let edge = stream[ind];
+  let ret = [];
+  while (is_term(edge.data)) {
+    ret.push(edge);
+    stream.splice(ind,1);
+    if (is_right_edge) {
+      ind = stream.length-1;
+    }
+  }
+  return ret;
+}
+
+export function new_reparse(to: ParseTree): ParseTree[] {
+  let middle = to.children;
+  middle = middle.filter((x)=>!is_box(x));
+  let [left, right] = left_and_right(to);
+  left = left.filter((x)=>!is_box(x));
+  right = right.filter((x)=>!is_box(x));
+  while(true) {
+    let middle_chart = recognize_append([],middle);
+    let middle_results = get_results(middle_chart);
+    if (!middle_results.some((item)=>item.rule.lhs === grammar_start)) {
+      // if middle can't turn into start then we know we have an invalid parse
+      break;
+    }
+    let results = parse(left.concat(middle).concat(right));
+    if (results.length !== 0) {
+      return results;
+    }
+    let inserting = decompose_edge(left,true);
+    middle = inserting.concat(middle);
+    let appending = decompose_edge(right,false);
+    middle = middle.concat(appending);
+  }
+  return [];
+}
+
+function reparse(to: ParseTree, input_stream: ParseTree[]) : [ParseTree, number][]{
   let steps_up = 0; //row
   let previous_target = to;
   let first_chart = recognize_append([],input_stream);
   let previous_row: [HashSet<RecognizerItem>[],ParseTree[]][] = [[first_chart,input_stream]];
   if (!to.render_info) {
-    return [[], 0];
+    return [];
   }
   if (!to.render_info!.parent) {
     let ret = parse(input_stream);
-    return [ret, 0];
+    return ret.map((x)=>[x,0])
   }
   let results = get_results(first_chart);
   let valid = results.filter((t)=>t.rule.lhs===to.data);
   if (valid.length !== 0) {
     let ret = parse(input_stream,to.render_info!.parent? true : false);
-    return [ret, steps_up];
+    let valid_ret = ret.filter((t)=>t.data===to.data);
+    if (valid_ret.length !== 0) {
+      return valid_ret.map((x)=>[x,steps_up]);
+    }
   }
   let target: ParseTree = to.render_info.parent;
   while (true) {
@@ -740,33 +812,32 @@ export function reparse(to: ParseTree, input_stream: ParseTree[]) : [ParseTree[]
     while (true) {
       let prev_index = Math.max(Math.min(previous_row.length-1, decomp_level - 1),0);
       let [prev_chart, prev_stream] = previous_row[prev_index];
+      let [before, after, shouldnt_continue] = decompose(target,decomp_level,previous_target);
       if (prev_chart.length === 0) {
         current_row.push([[],[]]);
         decomp_level++;
+        if (shouldnt_continue) {
+          break;
+        }
         continue;
       }
-      let [before, after, shouldnt_continue] = decompose(target,decomp_level,previous_target);
       let can_skip = !get_results(prev_chart).some((x)=>x.rule.lhs === target.data);
       if (can_skip) {
-        if (shouldnt_continue) {
-          return [[],steps_up]; 
+        for (const tree of get_results(prev_chart)) {
+          console.log(recognizer_item_str(tree));
         }
-        current_row.push([[],[]]);
+        let new_stream = before.concat(prev_stream).concat(after);
+        current_row.push([prev_chart,new_stream]);
         decomp_level++;
+        if (shouldnt_continue) {
+          break;
+        }
         continue;
       }
       let chart = prev_chart;
       if (before.length !== 0) {
         chart = recognize_append([],before.concat(prev_stream));
       }
-      // if (!shouldnt_continue && (decomp_level - steps_up) >= previous_row.length-1) {
-      //   let new_prev_chart = prev_chart.splice(prev_chart.length-1,1);
-      //   new_prev_chart.push(new HashSet<RecognizerItem>(item_hash));
-      //   for (const prev_item of prev_chart[prev_chart.length-1].to_array()) {
-      //     new_prev_chart[new_prev_chart.length-1].add(recognizer_item_clone(prev_item));
-      //   }
-      //   prev_chart = new_prev_chart;
-      // }
       if (DEBUG) {
         console.log("before");
         for (const tree of before) {
@@ -813,24 +884,60 @@ export function reparse(to: ParseTree, input_stream: ParseTree[]) : [ParseTree[]
         else {
           current_row.push([[],[]]);
         }
-        let valid = results.filter((t)=>t.rule.lhs===target.data);
+        let possible_ret: [ParseTree,number][] = [];
+        let looking_at = target;
+        let prev = target;
+        let cont = true;
+        let ret = parse(new_stream,target.render_info!.parent? true : false);
+        let up = 0;
+        let min = Infinity;
+        outer:
+        while (cont) {
+          console.log("going up!")
+          console.log(ptree_str(looking_at))
+        let valid = results.filter((t)=>t.rule.lhs===looking_at.data);
         if (valid.length !== 0) {
-          let ret = parse(new_stream,target.render_info!.parent? true : false);
-          return [ret, steps_up];
+          let valid_ret = ret.filter((t)=>t.data===looking_at.data);
+          if (valid_ret.length !== 0) {
+            for (const ret of valid_ret) {
+              if (ret.num_imagined === min) {
+                possible_ret.push([ret,steps_up+up]);
+              }
+              else if (ret.num_imagined < min) {
+                possible_ret = [[ret,steps_up+up]];
+                min = ret.num_imagined;
+              }
+            }
+          }
+        }
+        prev = looking_at;
+        up++;
+        looking_at = looking_at.render_info!.parent!;
+        if (!looking_at.render_info?.parent) {
+            break;
+        }
+        for (const sibling of looking_at.children) {
+            if (!is_box(sibling) && sibling !== prev) {
+                break outer; //sorry
+            }
+        }
+        } 
+        if (possible_ret.length !== 0) {
+          return possible_ret;
         }
       }
 
       if (shouldnt_continue) {
         if (results.length === 0) {
-          return [[],steps_up]; //if we've fully decomposed and there are no valid parses for everything, we can return
+          return []; //if we've fully decomposed and there are no valid parses for everything, we can return
         }
         break;
       }
       decomp_level++;
     }
     previous_row = current_row;
-    if (!target.render_info!.parent) {
-      return [[],steps_up];
+    if (!target.render_info?.parent) {
+      return [];
     }
     previous_target = target;
     target = target.render_info!.parent;
@@ -882,7 +989,7 @@ export function parse(stream: ParseTree[], any_target = false){
       }
       if (next_symbol && !is_term(next_symbol)) { //predict
         for (const rule of grammar[next_symbol - grammar_start]) {
-          let parse_forest = new ParseForest(rule.lhs,i, item.rule.variant, rule.rhs);
+          let parse_forest = new ParseForest(rule.lhs,i, rule.variant, rule.rhs);
           add_item(state_sets[i].items, unprocessed, {
             rule: rule, 
             dot: 0, 
@@ -950,6 +1057,7 @@ export function tokenize(stream: string){
   let ret: ParseTree[] = [];
   let token_index = 0;
   let slice = stream;
+  let error_slice = "";
   while (slice.length > 0) {
     let max_len = 0;
     let max_token: ParseTree | undefined = undefined;
@@ -967,8 +1075,16 @@ export function tokenize(stream: string){
     }
     if (max_len === 0) {
       max_len = 1; //ignore errors (for now)
+      error_slice += slice[0];
     }
     else if (max_token){
+      if (error_slice.length !== 0) {
+        alert(error_slice);
+        ret.push({data: Symbol.unknown, children: [], token: error_slice, num_imagined: 0, start: token_index, end: token_index+1,variant: -1});
+        max_token.start+=1;
+        max_token.end+=1;
+        error_slice = "";
+      }
       token_index += 1;
       ret.push(max_token);
     }

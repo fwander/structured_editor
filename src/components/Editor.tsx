@@ -1,9 +1,9 @@
 
 import { createSignal, createEffect, JSX, Component } from "solid-js";
 import { grammar_start, is_list, is_term, Symbol } from "~/gen/grammar";
-import { add_render_info, concreteify, decompose, defaultParseTree, get_root, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, reparse, retokenize, tokenize } from "~/parse";
+import { add_render_info, concreteify, decompose, defaultParseTree, get_root, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, new_reparse, retokenize, tokenize } from "~/parse";
 import { Tree } from "./Tree";
-import { child, is_box, lca_prevcousin, next_sibling, parent, prev_cousin, prev_sibling } from "~/navigate";
+import { child, is_box, lca_prevcousin, nav_left, next_sibling, parent, nav_right, prev_sibling, lca_nav_left } from "~/navigate";
 
 let global_cursor_index = 0;
 let height = 0;
@@ -80,15 +80,38 @@ function isAlphaNumeric(str: string) {
     return true;
   };
 
+let new_word = false;
+
+function set_focus_flag(tree: ParseTree) {
+    if (!tree.render_info) {
+        tree.render_info = {
+            reactiveSet: (x)=>{},
+            last_selected: 0,
+            cursor_index: -1,
+            size: 0,
+            focus_flag: true,
+            parent: tree,
+        }
+    }
+    else {
+        tree.render_info!.focus_flag = true;
+        tree.render_info!.cursor_index = -1;
+    }
+}
+
 // null if can't make edit
 function getTarget(event: KeyboardEvent, cursor: ParseTree): ParseTree | null {
     let adding_char = "";
-    let insert_mode = true;
-    if (!cursor || !cursor.render_info) {
+    let insert_mode = insertMode();
+    if (!cursor || !cursor.render_info || event.ctrlKey || event.altKey) {
         return null;
     }
-    if (event.key.length === 1 && isAlphaNumeric(event.key)) {
+    if (event.key.length === 1) {
         adding_char = event.key;
+    }
+    if (adding_char == ' ') {
+        new_word = true;
+        return null;
     }
     if (!adding_char) {
         if (event.key != "Backspace") {
@@ -100,9 +123,12 @@ function getTarget(event: KeyboardEvent, cursor: ParseTree): ParseTree | null {
     if (adding_char.length !== 0) { //addition
         if (cursor.children.length === 0 && !cursor.token) { 
             // cursor is an imagined non term if these are true
-            stream = tokenize(event.key);
+            let result = tokenize(event.key);
             target = cursor;
-            target.children  = stream;
+            target.children  = result;
+            if (result.length !== 0) {
+                set_focus_flag(result[result.length-1]);
+            }
             return target;
         }
         const parent = cursor.render_info.parent;
@@ -114,9 +140,30 @@ function getTarget(event: KeyboardEvent, cursor: ParseTree): ParseTree | null {
         if (is_term(cursor.data) && cursor.token) {
             const cursor_index = cursor.render_info.cursor_index;
             const token = cursor.token;
+            if (new_word) {
+                console.log("NEW WORD!!");
+                let result = tokenize(adding_char)
+                if (result.length !== 0) {
+                    set_focus_flag(result[result.length-1]);
+                }
+                target.children.splice(index+1,0,...result);
+                target.children = target.children.filter((x)=>!is_box(x));
+                return target;
+            }
             let result = tokenize(token.slice(0,cursor_index) + adding_char + token.slice(cursor_index))
+            if (result.length === 1 && result[0].data === cursor.data) {
+                result[0].render_info = cursor.render_info;
+                target.children[index] = result[0];
+                setFocusedNode(result[0]);
+                result[0].render_info.cursor_index++;
+                result[0].render_info.reactiveSet(result[0]);
+                return null;
+            }
+            if (result.length !== 0) {
+                set_focus_flag(result[result.length-1]);
+            }
             target.children.splice(index,1,...result);
-            stream = target.children;
+            target.children = target.children.filter((x)=>!is_box(x));
         }
         else {
             let delta = 1;
@@ -124,7 +171,6 @@ function getTarget(event: KeyboardEvent, cursor: ParseTree): ParseTree | null {
                 delta = 0;
             }
             target.children.splice(index+delta,0,...tokenize(adding_char));
-            stream = target.children;
         }
     } 
     else { //deletion
@@ -133,19 +179,32 @@ function getTarget(event: KeyboardEvent, cursor: ParseTree): ParseTree | null {
             return null;
         }
         target = parent;
-        target = del(cursor, target);
+        return del(cursor, target);
     }
     return target;
 }
 
 function obliterate(target: ParseTree) {
     let prev = target;
-    do {
+    outer:
+    while(true) {
         prev = target;
         target = target.render_info!.parent!;
-    } while(target.children.length === 1 && target.render_info!.parent);
+        if (!target.render_info?.parent) {
+            break;
+        }
+        for (const sibling of target.children) {
+            if (!is_box(sibling) && sibling !== prev) {
+                break outer; //sorry
+            }
+        }
+    }
     let index = target.children.indexOf(prev);
+    let focused = nav_left(prev);
+    focused.render_info!.focus_flag = true;
+    setFocusedNode(prev);
     target.children.splice(index,1);
+    target.children = target.children.filter((x)=>!is_box(x));
     return target;
 }
 
@@ -159,18 +218,27 @@ function del(cursor: ParseTree, parent: ParseTree) {
             const cursor_index = cursor.render_info.cursor_index;
             const token = cursor.token;
             if (token.length === 1) {
-                return obliterate(parent);
+                return obliterate(cursor);
             }
             let result = tokenize(token.slice(0,cursor_index-1) + token.slice(cursor_index))
+            if (result.length === 1 && result[0].data === cursor.data) {
+                parent.children[index] = result[0];
+                result[0].render_info = cursor.render_info;
+                result[0].render_info.cursor_index--;
+                result[0].render_info.reactiveSet(result[0]);
+                setFocusedNode(result[0]);
+                return null;
+            }
+            set_focus_flag(result[result.length-1]);
             parent.children.splice(index,1,...result);
             return parent;
         }
         else {
-            const res = lca_prevcousin(cursor);
-            if (res === null) {
-                return cursor;
-            }
-            const [[lca, cursor_depth],[prev,prev_depth]] = res;
+            const res = lca_nav_left(cursor);
+            const [lca, cursor_depth, prev, prev_depth] = res;
+            console.log("del!!!");
+            console.log(ptree_str(lca));
+            console.log(ptree_str(prev));
             if (is_term(prev.data) && prev.token !== undefined) {
                 const token_stream = tokenize(prev.token.concat(cursor.token));
                 let can_tokenize = true;
@@ -186,14 +254,12 @@ function del(cursor: ParseTree, parent: ParseTree) {
                     cursor.children = new_stream;
                     return parent;
                 }
-                else {
-                    const nav_prev = prev_cousin(cursor);
-                    if (nav_prev === cursor) {
-                        return cursor;
-                    }
-                    return obliterate(prev_cousin(cursor));
-                }
             }
+            const nav_prev = nav_left(cursor);
+            if (nav_prev === cursor) {
+                return cursor;
+            }
+            return obliterate(nav_left(cursor));
         }
     }
     else if (cursor.children.length !== 0) {
@@ -201,11 +267,11 @@ function del(cursor: ParseTree, parent: ParseTree) {
             return obliterate(cursor);
         }
         else {
-            const nav_prev = prev_cousin(cursor);
+            const nav_prev = nav_left(cursor);
             if (nav_prev === cursor) {
                 return cursor;
             }
-            return obliterate(prev_cousin(cursor));
+            return obliterate(nav_left(cursor));
         }
     }
     else if (is_box(cursor)) {
@@ -238,20 +304,20 @@ function del(cursor: ParseTree, parent: ParseTree) {
             return cursor;
         }
         else {
-            const nav_prev = prev_cousin(cursor);
+            const nav_prev = nav_left(cursor);
             if (nav_prev === cursor) {
                 return cursor;
             }
-            return obliterate(prev_cousin(cursor));
+            return obliterate(nav_left(cursor));
         }
     }
     return cursor;
 }
 
 export const [insertMode, setInsertMode] = createSignal<boolean>(false);
+export const [focusedNode, setFocusedNode] = createSignal<ParseTree>(defaultParseTree);
 export const Editor: Component = () => {
 //   const [tree, setTree] = createSignal<ParseTree>(defaultParseTree);
-  const [focusedNode, setFocusedNode] = createSignal<ParseTree>(defaultParseTree);
 
   const handleFocus = (node: ParseTree) => {
     setFocusedNode(node);
@@ -267,10 +333,23 @@ export const Editor: Component = () => {
     }
     else if (event.key === "ArrowLeft") {
         if (insertMode()) {
-            let clone = ptree_shallow(focusedNode());
-            clone.render_info!.cursor_index-=1;
-            focusedNode().render_info?.reactiveSet(clone);
-            setFocusedNode(clone);
+            if (is_box(focusedNode()) || 
+                (focusedNode().children.length!==0 && focusedNode().render_info?.cursor_index===0) 
+                ||focusedNode().render_info?.cursor_index === 0) {
+                setFocusedNode(nav_left(focusedNode()))
+                if (focusedNode().token) {
+                    let clone = ptree_shallow(focusedNode());
+                    clone.render_info!.cursor_index = clone.token!.length;
+                    focusedNode().render_info?.reactiveSet(clone);
+                    setFocusedNode(clone);
+                }
+            }
+            else {
+                let clone = ptree_shallow(focusedNode());
+                clone.render_info!.cursor_index-=1;
+                focusedNode().render_info?.reactiveSet(clone);
+                setFocusedNode(clone);
+            }
         }
         else {
             setFocusedNode(prev_sibling(focusedNode()));
@@ -278,10 +357,22 @@ export const Editor: Component = () => {
     }
     else if (event.key === "ArrowRight") {
         if (insertMode()) {
-            let clone = ptree_shallow(focusedNode());
-            clone.render_info!.cursor_index+=1;
-            focusedNode().render_info?.reactiveSet(clone);
-            setFocusedNode(clone);
+            if (is_box(focusedNode()) 
+            || (focusedNode().children.length!==0 && focusedNode().render_info?.cursor_index===1) 
+            || focusedNode().render_info?.cursor_index === focusedNode().token?.length) {
+                let next = nav_right(focusedNode());
+                setFocusedNode(next)
+                let clone = ptree_shallow(focusedNode());
+                clone.render_info!.cursor_index = 0;
+                focusedNode().render_info?.reactiveSet(clone);
+                setFocusedNode(clone);
+            }
+            else {
+                let clone = ptree_shallow(focusedNode());
+                clone.render_info!.cursor_index+=1;
+                focusedNode().render_info?.reactiveSet(clone);
+                setFocusedNode(clone);
+            }
         }
         else {
             setFocusedNode(next_sibling(focusedNode()));
@@ -304,13 +395,13 @@ export const Editor: Component = () => {
       }
   
       if (insertMode()) {
-        let [leafI, heI, rt] = getCoords(focusedNode());
         let target = getTarget(event,focusedNode());
         if (!target) {
             return;
         }
+        new_word = false;
         let stream = target.children;
-        let [newSubTrees, up] = reparse(target,stream);
+        let newSubTrees = new_reparse(target);
         if (newSubTrees.length === 0) { 
             add_render_info(target);
             let target_clone = ptree_less_shallow(target);
@@ -322,21 +413,22 @@ export const Editor: Component = () => {
         }
         concreteify(newSubTrees[0]);
         let looking_at = target;
-        while(up > 0) {
-            if (!looking_at.render_info?.parent) {
-                break;
-            }
-            looking_at = looking_at.render_info?.parent;
-            up -= 1;
-        }
-        console.log("looking at");
-        console.log(ptree_str(looking_at));
-        console.log("setting to");
-        console.log(ptree_str(newSubTrees[0]));
-        set_node(looking_at,newSubTrees[0]);
+        // let up = newSubTrees[0][1];
+        // while(up > 0) {
+        //     if (!looking_at.render_info?.parent) {
+        //         break;
+        //     }
+        //     looking_at = looking_at.render_info?.parent;
+        //     up -= 1;
+        // }
+        // console.log("looking at");
+        // console.log(ptree_str(looking_at));
+        // console.log("setting to");
+        // console.log(ptree_str(newSubTrees[0][0]));
+        set_node(get_root(looking_at),newSubTrees[0]);
         console.log("new tree");
-        console.log(ptree_str(get_root(newSubTrees[0])));
-        setFocusedNode(getTreeWithCoords(rt, leafI, heI)!);
+        console.log(ptree_str(newSubTrees[0]));
+        // setFocusedNode(getTreeWithCoords(rt, leafI, heI)!);
 
     }
   };
@@ -348,7 +440,7 @@ export const Editor: Component = () => {
     };
   });
 
-  return <Tree node={defaultParseTree} focusedNode={focusedNode} onFocus={handleFocus} index={0} length={0}/>;
+  return <Tree node={defaultParseTree} focusedNode={focusedNode} onFocus={handleFocus} index={0} length={0} style=""/>;
 };
 
 function set_node(target: ParseTree, new_node: ParseTree) {
