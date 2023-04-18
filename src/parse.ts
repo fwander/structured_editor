@@ -1,5 +1,6 @@
-import { AST, S_AST } from "./ast";
+import { AST } from "./ast";
 import { setFocusedNode } from "./components/Editor";
+import { factory_tbl, S_AST } from "./gen/ast_gen";
 import { defaults, grammar, grammar_start, is_list, is_term, regexes, Rule, Symbol } from "./gen/grammar";
 import HashSet from "./HashSet";
 import { is_box } from "./navigate";
@@ -279,7 +280,7 @@ export const defaultParseTree: ParseTree = {
   },
 };
 
-defaultParseTree.render_info!.ast = new S_AST(defaultParseTree);
+// defaultParseTree.render_info!.ast = new S_AST(defaultParseTree);
 
 export type RenderInfo = {
   reactiveSet: (to: ParseTree)=>void;
@@ -417,6 +418,17 @@ type StateSet = {
 
 const DEBUG = false;
 
+function make_ast(tree: ParseTree): AST | undefined {
+  if (is_term(tree.data)) {
+    return undefined; 
+  }
+  return factory_tbl[tree.data - grammar_start](tree);
+}
+
+function attach_ast(tree: ParseTree): void {
+  tree.render_info!.ast = make_ast(tree);
+}
+
 export function add_render_info(tree: ParseTree) {
   function recurse(tree_inner: ParseTree, parent: ParseTree) : number{
     if (tree_inner.render_info) {
@@ -441,8 +453,13 @@ export function add_render_info(tree: ParseTree) {
         cursor_index: 0,
         size: 0,
         focus_flag: false,
+        ast: undefined,
         parent: parent,
       }
+    }
+    attach_ast(tree_inner);
+    if (tree_inner.render_info.ast === undefined && !is_term(tree_inner.data)) {
+      tree_inner.render_info.ast = factory_tbl[tree_inner.data - grammar_start](tree_inner);
     }
     if (tree_inner.children.length === 0) {
       tree_inner.render_info.size = 1;
@@ -460,6 +477,7 @@ export function add_render_info(tree: ParseTree) {
   for (let child of tree.children) {
     recurse(child,tree);
   }
+  attach_ast(tree);
 }
 
 export function concreteify(tree: ParseTree, start=0): number{

@@ -14,18 +14,18 @@ export function parse_tree_to_data(tree: ParseTree): any {
 }
 
 export class AST {
-    protected data: ParseTree;
+    private data: ParseTree;
     constructor(data: ParseTree) {
+        console.log("hello from a new AST!!!");
+        if (!data) {
+            console.log("Undef data :(");
+        }
         this.data = data;
+    }
+    protected get_data(): ParseTree {
+        return this.data;
     }
     children() {
         return parse_tree_to_data(this.data);
     }
-}
-
-export function make_S_AST(tree: ParseTree): S_AST {
-    return new S_AST(tree);
-}
-
-export class S_AST extends AST{
 }

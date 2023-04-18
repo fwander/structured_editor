@@ -4,6 +4,7 @@ import { grammar_start, is_list, is_term, Symbol } from "~/gen/grammar";
 import { add_render_info, concreteify, decompose, defaultParseTree, get_root, ParseTree, ptree_less_shallow, ptree_shallow, ptree_str, new_reparse, retokenize, tokenize } from "~/parse";
 import { Tree } from "./Tree";
 import { child, is_box, lca_prevcousin, nav_left, next_sibling, parent, nav_right, prev_sibling, lca_nav_left } from "~/navigate";
+import { S_AST } from "~/gen/ast_gen";
 
 let global_cursor_index = 0;
 let height = 0;
@@ -428,6 +429,11 @@ export const Editor: Component = () => {
         set_node(get_root(looking_at),newSubTrees[0]);
         console.log("new tree");
         console.log(ptree_str(newSubTrees[0]));
+        if (newSubTrees[0].render_info?.ast) {
+            if (newSubTrees[0].data == grammar_start) {
+                console.log((newSubTrees[0].render_info!.ast as S_AST).nthExpr(5));
+            }
+        }
         // setFocusedNode(getTreeWithCoords(rt, leafI, heI)!);
 
     }
