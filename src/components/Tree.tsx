@@ -4,6 +4,7 @@ import { Symbol, grammar, grammar_start, is_list, is_term } from "~/gen/grammar"
 import { RenderInfo, ParseTree, ptree_str, ptree_shallow, ptree_less_shallow } from "~/parse";
 import { insertMode } from "./Editor";
 import "./Tree.css";
+import { is_box } from "~/navigate";
 
 
 function child_style(tree: ParseTree,index: number): string {
@@ -11,6 +12,14 @@ function child_style(tree: ParseTree,index: number): string {
     return "";
   }
   return grammar[tree.data-grammar_start][tree.variant].names[index];
+}
+
+function get_breaks(tree: ParseTree) : number[] {
+  if (is_term(tree.data) || tree.variant < 0) {
+    return [];
+  }
+  let breaks = grammar[tree.data-grammar_start][tree.variant].breaks;
+  return breaks;
 }
 
 
@@ -59,7 +68,7 @@ export const Tree: Component<TreeProps> = (props) => {
           looking_at = looking_at.children[0];
         }
         else { // imagined non-term at end
-          children_inner.splice(0,0,[looking_at,""]);
+          // children_inner.splice(0,0,[looking_at,""]);
           break; //this shouldn't happen??? hopefully :)
         }
       }
@@ -70,6 +79,7 @@ export const Tree: Component<TreeProps> = (props) => {
     }
   });
 
+
   const handleFocus = () => {
     props.onFocus(tree());
   };
@@ -79,7 +89,7 @@ export const Tree: Component<TreeProps> = (props) => {
       <div
         tabIndex="0"
         onFocus={handleFocus}
-        class={(tree() === props.focusedNode() ? "focused" : "") + " " + props.style}
+        class={(tree() === props.focusedNode() ? "focused" : "") + " " + props.style + (is_box(tree())? " empty" : "")}
       >
         {(tree().token)?
          (tree() === props.focusedNode() && insertMode())?
@@ -93,23 +103,25 @@ export const Tree: Component<TreeProps> = (props) => {
         
         : 
          (children().length !== 0)? 
-          <>
+          <div class="text-wrapper">
             {(tree() === props.focusedNode() && insertMode() && tree().render_info?.cursor_index === 0)?
             <div class="cursor-div"></div> : null
             }
               <For each={children()}>
                 {(child, i) => (
+                  <>
                     <Tree node={child[0]} focusedNode={props.focusedNode} onFocus={props.onFocus} parent={tree()} index={i()} length={children().length} style={child[1]}/>
+                  </>
                 )}
               </For>
             {tree() === props.focusedNode() && insertMode() && (tree().render_info?.cursor_index !== 0)?
             <div class="cursor-div"></div> : null
             }
-          </> 
+          </div> 
           : 
-          <div class="text-wrapper">
-            empty
-          </div>
+          tree() === props.focusedNode() && insertMode()?
+          <div class="cursor-div"></div> : null
+          
         }
       </div>
     </>

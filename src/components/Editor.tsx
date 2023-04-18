@@ -5,6 +5,8 @@ import { add_render_info, concreteify, decompose, defaultParseTree, get_root, Pa
 import { Tree } from "./Tree";
 import { child, is_box, lca_prevcousin, nav_left, next_sibling, parent, nav_right, prev_sibling, lca_nav_left } from "~/navigate";
 import { S_AST } from "~/gen/ast_gen";
+import { SerializerVisitor } from "~/language_files/serializer";
+import { EvaluatorVisitor } from "~/language_files/evaluator";
 
 let global_cursor_index = 0;
 let height = 0;
@@ -315,6 +317,10 @@ function del(cursor: ParseTree, parent: ParseTree) {
     return cursor;
 }
 
+const printer = new SerializerVisitor();
+
+let canvas: HTMLCanvasElement;
+
 export const [insertMode, setInsertMode] = createSignal<boolean>(false);
 export const [focusedNode, setFocusedNode] = createSignal<ParseTree>(defaultParseTree);
 export const Editor: Component = () => {
@@ -429,24 +435,34 @@ export const Editor: Component = () => {
         set_node(get_root(looking_at),newSubTrees[0]);
         console.log("new tree");
         console.log(ptree_str(newSubTrees[0]));
-        if (newSubTrees[0].render_info?.ast) {
-            if (newSubTrees[0].data == grammar_start) {
-                console.log((newSubTrees[0].render_info!.ast as S_AST).nthExpr(5));
-            }
-        }
+        // if (newSubTrees[0].render_info?.ast) {
+        //     if (newSubTrees[0].data == grammar_start) {
+        //         console.log((newSubTrees[0].render_info!.ast as S_AST).nthExpr(5));
+        //     }
+        // }
+        // console.log(newSubTrees[0].render_info?.ast?.accept(printer, undefined));
+        newSubTrees[0].render_info?.ast?.accept(evaluator, undefined);
         // setFocusedNode(getTreeWithCoords(rt, leafI, heI)!);
 
     }
   };
 
+  let evaluator: EvaluatorVisitor;
   createEffect(() => {
     document.addEventListener("keydown", handleKeyPress);
+    if (!evaluator)
+        evaluator = new EvaluatorVisitor(canvas);
     return () => {
       document.removeEventListener("keydown", handleKeyPress);
     };
   });
 
-  return <Tree node={defaultParseTree} focusedNode={focusedNode} onFocus={handleFocus} index={0} length={0} style=""/>;
+  return (
+    <div>
+        <Tree node={defaultParseTree} focusedNode={focusedNode} onFocus={handleFocus} index={0} length={0} style=""/>
+        <canvas ref={canvas} width={256} height={256}></canvas>
+    </div>
+  );
 };
 
 function set_node(target: ParseTree, new_node: ParseTree) {

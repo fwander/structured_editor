@@ -14,6 +14,22 @@
     flex: 
 } */
 
+.children {
+    display: flex;
+    flex-flow: wrap;
+}
+
+.empty {
+    width: 10px;
+    height: 20px;
+    background-color: rgb(215, 225, 233);
+    border-radius: 4px;
+}
+
+.break {
+    width: 100%;
+}
+
 .horiz {
     display: flex;
     flex-direction: column;

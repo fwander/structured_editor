@@ -3,373 +3,579 @@
 
 export enum Symbol {
     
-  token0,
-  
-  token1,
-  
-  token2,
-  
-  token3,
-  
-  token4,
-  
-  token5,
-  
-  token6,
-  
-  token7,
-  
-  token8,
-  
-  unknown,
-  
-  S,
-  
-  S_0,
-  
-  S_4,
-  
-  expr,
-  
-  expr_3,
-  
-  expr_6,
-  
-  keyword_1,
-  
-  op,
-  
-};
-
-export const grammar_start = Symbol.S;
-
-export const regexes = [
-  
-  /^;/,
-  
-  /^[0-9]+/,
-  
-  /^\(/,
-  
-  /^\)/,
-  
-  /^rect/,
-  
-  /^circle/,
-  
-  /^rotate/,
-  
-  /^transform/,
-  
-  /^[a-zA-Z]+/,
-  
-];
-
-export const defaults = [
-  
-  ';',
-  
-  '',
-  
-  '\(',
-  
-  '\)',
-  
-  'rect',
-  
-  'circle',
-  
-  'rotate',
-  
-  'transform',
-  
-  '',
-  
-]
-
-export type Rule = {
-  lhs: Symbol;
-  rhs: Symbol[];
-  names: string[];
-  variant: number;
-}
-
-export const grammar: Rule[][] = [
-  
-  [ // S
+    token0,
     
-      {lhs: Symbol.S,
-      rhs: [
-        
-        Symbol.S_0,
-        
-      ],
-      names: [
-        
-        "",
-        
-      ],
-      variant: 0,},
+    token1,
     
-  ],
+    token2,
+    
+    token3,
+    
+    token4,
+    
+    token5,
+    
+    token6,
+    
+    token7,
+    
+    token8,
+    
+    token9,
+    
+    unknown,
+    
+    S,
+    
+    S_0,
+    
+    S_5,
+    
+    expr,
+    
+    number,
+    
+    op,
+    
+    opexpr,
+    
+    opexpr_4,
+    
+    keyword,
+    
+    keyword_2,
+    
+    id,
+    
+    color,
+    
+  };
   
-  [ // S_0
-    
-      {lhs: Symbol.S_0,
-      rhs: [
-        
-        Symbol.S_0,
-        
-        Symbol.S_4,
-        
-      ],
-      names: [
-        
-        "",
-        
-        "horiz",
-        
-      ],
-      variant: 0,},
-    
-      {lhs: Symbol.S_0,
-      rhs: [
-        
-      ],
-      names: [
-        
-      ],
-      variant: 1,},
-    
-  ],
+  export const grammar_start = Symbol.S;
   
-  [ // S_4
+  export const regexes = [
     
-      {lhs: Symbol.S_4,
-      rhs: [
-        
-        Symbol.expr,
-        
-        Symbol.token0,
-        
-      ],
-      names: [
-        
-        "",
-        
-        "",
-        
-      ],
-      variant: 0,},
+    /^;/,
     
-  ],
+    /^[0-9]+/,
+    
+    /^\(/,
+    
+    /^\)/,
+    
+    /^rect/,
+    
+    /^circle/,
+    
+    /^rotate/,
+    
+    /^translate/,
+    
+    /^[a-z]+/,
+    
+    /^[A-Z]+/,
+    
+  ];
   
-  [ // expr
+  export const defaults = [
     
-      {lhs: Symbol.expr,
-      rhs: [
-        
-        Symbol.expr_3,
-        
-      ],
-      names: [
-        
-        "",
-        
-      ],
-      variant: 0,},
+    ';',
     
-      {lhs: Symbol.expr,
-      rhs: [
-        
-        Symbol.token1,
-        
-      ],
-      names: [
-        
-        "",
-        
-      ],
-      variant: 1,},
+    '',
     
-  ],
+    '\(',
+    
+    '\)',
+    
+    'rect',
+    
+    'circle',
+    
+    'rotate',
+    
+    'translate',
+    
+    '',
+    
+    '',
+    
+  ]
   
-  [ // expr_3
-    
-      {lhs: Symbol.expr_3,
-      rhs: [
-        
-        Symbol.token2,
-        
-        Symbol.op,
-        
-        Symbol.expr_6,
-        
-        Symbol.token3,
-        
-      ],
-      names: [
-        
-        "",
-        
-        "",
-        
-        "",
-        
-        "",
-        
-      ],
-      variant: 0,},
-    
-  ],
-  
-  [ // expr_6
-    
-      {lhs: Symbol.expr_6,
-      rhs: [
-        
-        Symbol.expr_6,
-        
-        Symbol.expr,
-        
-      ],
-      names: [
-        
-        "",
-        
-        "",
-        
-      ],
-      variant: 0,},
-    
-      {lhs: Symbol.expr_6,
-      rhs: [
-        
-      ],
-      names: [
-        
-      ],
-      variant: 1,},
-    
-  ],
-  
-  [ // keyword_1
-    
-      {lhs: Symbol.keyword_1,
-      rhs: [
-        
-        Symbol.token4,
-        
-      ],
-      names: [
-        
-        "",
-        
-      ],
-      variant: 0,},
-    
-      {lhs: Symbol.keyword_1,
-      rhs: [
-        
-        Symbol.token5,
-        
-      ],
-      names: [
-        
-        "",
-        
-      ],
-      variant: 1,},
-    
-      {lhs: Symbol.keyword_1,
-      rhs: [
-        
-        Symbol.token6,
-        
-      ],
-      names: [
-        
-        "",
-        
-      ],
-      variant: 2,},
-    
-      {lhs: Symbol.keyword_1,
-      rhs: [
-        
-        Symbol.token7,
-        
-      ],
-      names: [
-        
-        "",
-        
-      ],
-      variant: 3,},
-    
-  ],
-  
-  [ // op
-    
-      {lhs: Symbol.op,
-      rhs: [
-        
-        Symbol.keyword_1,
-        
-      ],
-      names: [
-        
-        "keyword",
-        
-      ],
-      variant: 0,},
-    
-      {lhs: Symbol.op,
-      rhs: [
-        
-        Symbol.token8,
-        
-      ],
-      names: [
-        
-        "",
-        
-      ],
-      variant: 1,},
-    
-  ],
-  
-]
-
-
-const list_tbl: boolean[] = [
-  
-  false,
-  
-  true,
-  
-  false,
-  
-  false,
-  
-  false,
-  
-  true,
-  
-  false,
-  
-  false,
-  
-];
-
-export function is_list(s: Symbol) {
-  if (is_term(s)) {
-    return false;
+  export type Rule = {
+    lhs: Symbol;
+    rhs: Symbol[];
+    names: string[];
+    breaks: number[];
+    variant: number;
   }
-  return list_tbl[s - grammar_start];
-}
+  
+  export const grammar: Rule[][] = [
+    
+    [ // S
+      
+        {lhs: Symbol.S,
+        rhs: [
+          
+          Symbol.S_0,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 0,},
+      
+    ],
+    
+    [ // S_0
+      
+        {lhs: Symbol.S_0,
+        rhs: [
+          
+          Symbol.S_0,
+          
+          Symbol.S_5,
+          
+        ],
+        names: [
+          
+          "",
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          2,
+          
+        ],
+        variant: 0,},
+      
+        {lhs: Symbol.S_0,
+        rhs: [
+          
+        ],
+        names: [
+          
+        ],
+        breaks: [
+          
+          0,
+          
+        ],
+        variant: 1,},
+      
+    ],
+    
+    [ // S_5
+      
+        {lhs: Symbol.S_5,
+        rhs: [
+          
+          Symbol.expr,
+          
+          Symbol.token0,
+          
+        ],
+        names: [
+          
+          "",
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          2,
+          
+          2,
+          
+        ],
+        variant: 0,},
+      
+    ],
+    
+    [ // expr
+      
+        {lhs: Symbol.expr,
+        rhs: [
+          
+          Symbol.opexpr,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 0,},
+      
+        {lhs: Symbol.expr,
+        rhs: [
+          
+          Symbol.number,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 1,},
+      
+        {lhs: Symbol.expr,
+        rhs: [
+          
+          Symbol.color,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 2,},
+      
+    ],
+    
+    [ // number
+      
+        {lhs: Symbol.number,
+        rhs: [
+          
+          Symbol.token1,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 0,},
+      
+    ],
+    
+    [ // op
+      
+        {lhs: Symbol.op,
+        rhs: [
+          
+          Symbol.keyword,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 0,},
+      
+        {lhs: Symbol.op,
+        rhs: [
+          
+          Symbol.id,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 1,},
+      
+    ],
+    
+    [ // opexpr
+      
+        {lhs: Symbol.opexpr,
+        rhs: [
+          
+          Symbol.token2,
+          
+          Symbol.op,
+          
+          Symbol.opexpr_4,
+          
+          Symbol.token3,
+          
+        ],
+        names: [
+          
+          "",
+          
+          "",
+          
+          "",
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          4,
+          
+        ],
+        variant: 0,},
+      
+    ],
+    
+    [ // opexpr_4
+      
+        {lhs: Symbol.opexpr_4,
+        rhs: [
+          
+          Symbol.opexpr_4,
+          
+          Symbol.expr,
+          
+        ],
+        names: [
+          
+          "",
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          2,
+          
+        ],
+        variant: 0,},
+      
+        {lhs: Symbol.opexpr_4,
+        rhs: [
+          
+        ],
+        names: [
+          
+        ],
+        breaks: [
+          
+          0,
+          
+        ],
+        variant: 1,},
+      
+    ],
+    
+    [ // keyword
+      
+        {lhs: Symbol.keyword,
+        rhs: [
+          
+          Symbol.keyword_2,
+          
+        ],
+        names: [
+          
+          "keyword",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 0,},
+      
+    ],
+    
+    [ // keyword_2
+      
+        {lhs: Symbol.keyword_2,
+        rhs: [
+          
+          Symbol.token4,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 0,},
+      
+        {lhs: Symbol.keyword_2,
+        rhs: [
+          
+          Symbol.token5,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 1,},
+      
+        {lhs: Symbol.keyword_2,
+        rhs: [
+          
+          Symbol.token6,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 2,},
+      
+        {lhs: Symbol.keyword_2,
+        rhs: [
+          
+          Symbol.token7,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 3,},
+      
+    ],
+    
+    [ // id
+      
+        {lhs: Symbol.id,
+        rhs: [
+          
+          Symbol.token8,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 0,},
+      
+    ],
+    
+    [ // color
+      
+        {lhs: Symbol.color,
+        rhs: [
+          
+          Symbol.token9,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 0,},
+      
+    ],
+    
+  ]
 
-
-export function is_term(s: Symbol){
-  return s <= Symbol.unknown;
-}
+  
+  const list_tbl: boolean[] = [
+    
+    false,
+    
+    true,
+    
+    false,
+    
+    false,
+    
+    false,
+    
+    false,
+    
+    false,
+    
+    true,
+    
+    false,
+    
+    false,
+    
+    false,
+    
+    false,
+    
+  ];
+  
+  export function is_list(s: Symbol) {
+    if (is_term(s)) {
+      return false;
+    }
+    return list_tbl[s - grammar_start];
+  }
+  
+  
+  export function is_term(s: Symbol){
+    return s <= Symbol.unknown;
+  }
