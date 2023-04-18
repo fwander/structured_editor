@@ -7,6 +7,7 @@ import { child, is_box, lca_prevcousin, nav_left, next_sibling, parent, nav_righ
 import { S_AST } from "~/gen/ast_gen";
 import { SerializerVisitor } from "~/language_files/serializer";
 import { EvaluatorVisitor } from "~/language_files/evaluator";
+import * as paper from 'paper';
 
 let global_cursor_index = 0;
 let height = 0;
@@ -169,6 +170,9 @@ function getTarget(event: KeyboardEvent, cursor: ParseTree): ParseTree | null {
             target.children = target.children.filter((x)=>!is_box(x));
         }
         else {
+            console.log("here!");
+            // THIS IS WHERE IT BAD
+            console.log(target.render_info?.cursor_index);
             let delta = 1;
             if (target.render_info?.cursor_index === 0) {
                 delta = 0;
@@ -319,6 +323,7 @@ function del(cursor: ParseTree, parent: ParseTree) {
 
 const printer = new SerializerVisitor();
 
+let evaluator: EvaluatorVisitor;
 let canvas: HTMLCanvasElement;
 
 export const [insertMode, setInsertMode] = createSignal<boolean>(false);
@@ -344,12 +349,12 @@ export const Editor: Component = () => {
                 (focusedNode().children.length!==0 && focusedNode().render_info?.cursor_index===0) 
                 ||focusedNode().render_info?.cursor_index === 0) {
                 setFocusedNode(nav_left(focusedNode()))
-                if (focusedNode().token) {
+                //if (focusedNode().token) {
                     let clone = ptree_shallow(focusedNode());
-                    clone.render_info!.cursor_index = clone.token!.length;
+                    clone.render_info!.cursor_index = clone.token?.length ?? 1;
                     focusedNode().render_info?.reactiveSet(clone);
                     setFocusedNode(clone);
-                }
+                //}
             }
             else {
                 let clone = ptree_shallow(focusedNode());
@@ -402,8 +407,22 @@ export const Editor: Component = () => {
       }
   
       if (insertMode()) {
+        console.log("Focused:");
+        if (focusedNode()) {
+            console.log(ptree_str(focusedNode()));
+        } else {
+            console.log("no focused node");
+        }
+        
         let target = getTarget(event,focusedNode());
+        console.log("Target:");
+        if(target) {
+        console.log(ptree_str(target));} else {console.log("no target");}
         if (!target) {
+            let root = get_root(focusedNode());
+            if (root) {
+                root.render_info?.ast?.accept(evaluator, undefined);
+            }
             return;
         }
         new_word = false;
@@ -442,12 +461,17 @@ export const Editor: Component = () => {
         // }
         // console.log(newSubTrees[0].render_info?.ast?.accept(printer, undefined));
         newSubTrees[0].render_info?.ast?.accept(evaluator, undefined);
+        // paper.setup(canvas);
+        // new paper.Path.Circle({
+        //     center   : paper.view.center,
+        //     radius   : 50,
+        //     fillColor: 'orange',
+        // });
         // setFocusedNode(getTreeWithCoords(rt, leafI, heI)!);
 
     }
   };
 
-  let evaluator: EvaluatorVisitor;
   createEffect(() => {
     document.addEventListener("keydown", handleKeyPress);
     if (!evaluator)

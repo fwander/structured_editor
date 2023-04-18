@@ -8,7 +8,7 @@ export function parse_tree_to_data(tree: ParseTree): any {
     }
     if (is_list(tree.data)) {
         if (tree.children.length === 0) {
-            return [];
+            return null;
         }
         if (tree.children.length === 1) {
             return [parse_tree_to_data(tree.children[0])];
@@ -25,7 +25,7 @@ export function parse_tree_to_data(tree: ParseTree): any {
                 looking_at = looking_at.children[0];
             }
             else { // imagined non-term at end
-                ret.splice(0,0,looking_at);
+                // ret.splice(0,0,looking_at);
                 break;
             }
         }
