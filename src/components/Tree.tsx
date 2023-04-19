@@ -103,7 +103,7 @@ export const Tree: Component<TreeProps> = (props) => {
         
         : 
          (children().length !== 0)? 
-          <div class="text-wrapper">
+          <div class="children">
             {(tree() === props.focusedNode() && insertMode() && tree().render_info?.cursor_index === 0)?
             <div class="cursor-div"></div> : null
             }

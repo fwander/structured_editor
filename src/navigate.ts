@@ -155,12 +155,24 @@ export function lca_nav_left(from: ParseTree): [ParseTree, number, ParseTree, nu
     return [prev, distance_to_prev, lca, distance_to_cur];
 }
 
-export function nav_right(from: ParseTree): ParseTree {
+export function nav_right(from: ParseTree, prev?: ParseTree): ParseTree {
     let [ret, _] = adj_cousin(from, true);
+    if (ret === prev) {
+        return ret;
+    }
+    else if (is_box(ret) && ret.variant !== -1){
+        return nav_right(ret,ret)
+    }
     return ret;
 }
-export function nav_left(from: ParseTree): ParseTree {
+export function nav_left(from: ParseTree, prev?: ParseTree): ParseTree {
     let [ret, _] = adj_cousin(from, false);
+    if (ret === prev) {
+        return ret;
+    }
+    else if (is_box(ret) && ret.variant !== -1){
+        return nav_right(ret,ret)
+    }
     return ret;
 }
 

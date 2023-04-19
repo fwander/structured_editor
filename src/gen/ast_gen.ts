@@ -18,6 +18,16 @@ make_color_AST,
 ]
 export class S_AST extends AST {
 	accept = (v: Visitor<any, any>, env: any) => v.visit_S_AST(this, env);
+	exprsList(): null|((null)|([(expr_AST|null),string,undefined,]))[] {
+		let looking_at = super.get_data();
+		switch (looking_at.variant) {
+			case 0:
+				looking_at = looking_at.children[0];
+				return parse_tree_to_data(looking_at);
+			default:
+				return null;
+		}
+	}
 	nthExpr(n0=0,): null|(expr_AST|null) {
 		let looking_at = super.get_data();
 		switch (looking_at.variant) {
@@ -35,22 +45,22 @@ export class S_AST extends AST {
 				return null;
 		}
 	}
-	exprsList(): null|((null)|([(expr_AST|null),string,undefined,]))[] {
-		let looking_at = super.get_data();
-		switch (looking_at.variant) {
-			case 0:
-				looking_at = looking_at.children[0];
-				return parse_tree_to_data(looking_at);
-			default:
-				return null;
-		}
-	}
 }
 export function make_S_AST(tree: ParseTree): S_AST {
 	return new S_AST(tree);
 }
 export class expr_AST extends AST {
 	accept = (v: Visitor<any, any>, env: any) => v.visit_expr_AST(this, env);
+	num(): null|(number_AST|null) {
+		let looking_at = super.get_data();
+		switch (looking_at.variant) {
+			case 1:
+				looking_at = looking_at.children[0];
+				return parse_tree_to_data(looking_at);
+			default:
+				return null;
+		}
+	}
 	col(): null|(color_AST|null) {
 		let looking_at = super.get_data();
 		switch (looking_at.variant) {
@@ -65,16 +75,6 @@ export class expr_AST extends AST {
 		let looking_at = super.get_data();
 		switch (looking_at.variant) {
 			case 0:
-				looking_at = looking_at.children[0];
-				return parse_tree_to_data(looking_at);
-			default:
-				return null;
-		}
-	}
-	num(): null|(number_AST|null) {
-		let looking_at = super.get_data();
-		switch (looking_at.variant) {
-			case 1:
 				looking_at = looking_at.children[0];
 				return parse_tree_to_data(looking_at);
 			default:
@@ -103,20 +103,20 @@ export function make_number_AST(tree: ParseTree): number_AST {
 }
 export class op_AST extends AST {
 	accept = (v: Visitor<any, any>, env: any) => v.visit_op_AST(this, env);
-	name(): null|(id_AST|null) {
+	kw(): null|(keyword_AST|null) {
 		let looking_at = super.get_data();
 		switch (looking_at.variant) {
-			case 1:
+			case 0:
 				looking_at = looking_at.children[0];
 				return parse_tree_to_data(looking_at);
 			default:
 				return null;
 		}
 	}
-	kw(): null|(keyword_AST|null) {
+	name(): null|(id_AST|null) {
 		let looking_at = super.get_data();
 		switch (looking_at.variant) {
-			case 0:
+			case 1:
 				looking_at = looking_at.children[0];
 				return parse_tree_to_data(looking_at);
 			default:
@@ -155,7 +155,7 @@ export function make_opexpr_AST(tree: ParseTree): opexpr_AST {
 }
 export class keyword_AST extends AST {
 	accept = (v: Visitor<any, any>, env: any) => v.visit_keyword_AST(this, env);
-	word(): null|((((null)|(string))|(string))|(string))|(string) {
+	word(): null|((((((null)|(string))|(string))|(string))|(string))|(string))|(string) {
 		let looking_at = super.get_data();
 		switch (looking_at.variant) {
 			case 0:

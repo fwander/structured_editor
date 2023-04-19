@@ -16,7 +16,8 @@
 
 .children {
     display: flex;
-    flex-flow: wrap;
+    flex-direction: row;
+    gap: 3px;
 }
 
 .empty {

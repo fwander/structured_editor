@@ -20,6 +20,7 @@
     "paper": "^0.12.17",
     "solid-js": "^1.7.2",
     "solid-start": "^0.2.25",
+    "ts-priority-queue": "^0.1.1",
     "undici": "^5.15.1"
   },
   "engines": {

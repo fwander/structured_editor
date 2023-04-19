@@ -23,6 +23,11 @@ export enum Symbol {
     
     token9,
     
+    token10,
+    
+    token11,
+    
+    epsilon,
     unknown,
     
     S,
@@ -71,6 +76,10 @@ export enum Symbol {
     
     /^translate/,
     
+    /^add/,
+    
+    /^subtract/,
+    
     /^[a-z]+/,
     
     /^[A-Z]+/,
@@ -95,10 +104,15 @@ export enum Symbol {
     
     'translate',
     
-    '',
+    'add',
+    
+    'subtract',
     
     '',
     
+    '',
+    
+    '',
   ]
   
   export type Rule = {
@@ -491,6 +505,42 @@ export enum Symbol {
         ],
         variant: 3,},
       
+        {lhs: Symbol.keyword_2,
+        rhs: [
+          
+          Symbol.token8,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 4,},
+      
+        {lhs: Symbol.keyword_2,
+        rhs: [
+          
+          Symbol.token9,
+          
+        ],
+        names: [
+          
+          "",
+          
+        ],
+        breaks: [
+          
+          1,
+          
+        ],
+        variant: 5,},
+      
     ],
     
     [ // id
@@ -498,7 +548,7 @@ export enum Symbol {
         {lhs: Symbol.id,
         rhs: [
           
-          Symbol.token8,
+          Symbol.token10,
           
         ],
         names: [
@@ -520,7 +570,7 @@ export enum Symbol {
         {lhs: Symbol.color,
         rhs: [
           
-          Symbol.token9,
+          Symbol.token11,
           
         ],
         names: [

@@ -4,7 +4,7 @@ import { factory_tbl, S_AST } from "./gen/ast_gen";
 import { defaults, grammar, grammar_start, is_list, is_term, regexes, Rule, Symbol } from "./gen/grammar";
 import HashSet from "./HashSet";
 import { is_box } from "./navigate";
-import { get_alphabet } from "./nonterm_alphabets";
+import PriorityQueue from "ts-priority-queue";
 
 export type RecognizerItem = {
   rule: Rule;
@@ -103,7 +103,7 @@ class ParseForest {
   variant: number;
   leaf?: ParseTree;
   start:number;
-  flatten_memo: ParseTree[] = [];
+  flatten_memo?: ParseTree[];
   id: number;
   static last_id = 0;
   constructor(data: Symbol, start: number, variant: number, rhs?: Symbol[], leaf?: ParseTree){
@@ -111,16 +111,29 @@ class ParseForest {
     this.start = start;
     this.variant = variant;
     if (rhs) {
-      for (const symbol of rhs) {
-        this.children.push(new Map([[new ParseForest(symbol,-1,-1,undefined,
-          {
-          data: symbol,
-          children: [],
-          num_imagined: 1,
-          start: -1,
-          variant: -1,
-          end: -1,
-        }),1]]));
+      if (rhs.length === 0) {
+          let epsilon = new ParseForest(Symbol.epsilon,start,0,undefined,{
+            data: Symbol.epsilon,
+            children: [],
+            start: start,
+            end: start,
+            variant: 0,
+            num_imagined: 0,
+          })
+          this.children = [new Map([[epsilon,1]])];
+      }
+      else {
+        for (const symbol of rhs) {
+          this.children.push(new Map([[new ParseForest(symbol,-1,-1,undefined,
+            {
+            data: symbol,
+            children: [],
+            num_imagined: 1,
+            start: -1,
+            variant: -1,
+            end: -1,
+          }),1]]));
+        }
       }
     }
     this.leaf = leaf;
@@ -151,70 +164,83 @@ class ParseForest {
     return ret;
   }
 
-  flatten(end: number, indent: string = "", edge_context: Map<ParseForest,Map<ParseForest, number>> = new Map()): ParseTree[] {
-    if (DEBUG)
-      console.log(indent + "flattening: " + Symbol[this.data] + "." + this.id + (this.start === -1 ? "?" : ""));
-    if (this.flatten_memo.length !== 0) {
-      if (DEBUG){
-        for (const tree of this.flatten_memo) {
-          console.log(ptree_str(tree, indent+"\t"));
-        }
-      }
+  flatten(edge_context: Map<ParseForest, Map<ParseForest, number>> = new Map(), min_imagined: Map<number, Map<number, number>> = new Map() ): ParseTree[] {
+    if (this.flatten_memo !== undefined) {
       return this.flatten_memo;
     }
-    if (this.leaf){
+    if (this.leaf) {
       return [this.leaf];
     }
-    let child_forests: ParseTree[][] = [];
-    for (let i = 0; i < this.children.length; i++){
-      if (DEBUG)
-        console.log(indent + "\t" + i.toString());
-      child_forests[i] = [];
-      for (const child_forest of this.children[i]) {
-        if (edge_context.get(this)?.get(child_forest[0]) !== child_forest[1]) {
-          let map = edge_context.get(this);
-          if (!map) {
-            let adding = new Map();
-            edge_context.set(this, adding);
-            map = adding;
-          }
-          map.set(child_forest[0],(map.get(child_forest[0]) ?? 0) + 1);
-          child_forests[i].push(...child_forest[0].flatten(end, indent + "\t", edge_context));
-          map.set(child_forest[0],(map.get(child_forest[0]) ?? 0) - 1);
+  
+    let pq = new PriorityQueue<[ParseTree, number]>({
+      comparator: (a, b) => {
+        const imagined_diff = a[0].num_imagined - b[0].num_imagined;
+        if (imagined_diff !== 0) {
+          return imagined_diff;
         }
-        else if (DEBUG){
-          console.log(indent + "\tskipped:" + Symbol[child_forest[0].data] + "." + child_forest[0].id);
-        }
+        return (b[1] - a[1]);
       }
-    }
-    if (!(end === -1)) {
-      let full_ret = child_forests.reduce((accumulator, f)=>accumulator.concat(f.filter((t)=>{return !(t.children.length === 0) && t.start === 0 && t.end === end})),[]);
-      if (full_ret.length !== 0) {
-        return full_ret;
-      }
-    }
+    });
+    let initial_tree: ParseTree = {
+      children: [],
+      data: this.data,
+      num_imagined: 0,
+      start: this.start,
+      end: this.start,
+      variant: this.variant
+    };
+    pq.queue([initial_tree, 0]);
+  
     let ret: ParseTree[] = [];
-    let next_ret: ParseTree[] = [];
-    let ret_root = {children: [], data: this.data, num_imagined: 0, start: this.start, end: this.start, variant: this.variant};
-    ret.push(ret_root);
-    for (let i = 0; i < this.children.length; i++){
-      for (const ret_tree of ret){
-        for (const tree of child_forests[i]){
-          if (tree.start === ret_tree.end || tree.start === -1){
-            let next_end = (tree.start === -1)? ret_tree.end : tree.end;
-            next_ret.push({
-              children: ret_tree.children.concat([tree]), 
-              num_imagined: ret_tree.num_imagined+tree.num_imagined, 
-              data: this.data, 
-              start: this.start, 
-              end: next_end,
-              variant: this.variant
-            });
+  
+    while (!(pq.length === 0)) {
+      let [current_tree, index] = pq.dequeue()!;
+      const current_min_imagined = min_imagined.get(current_tree.start)?.get(current_tree.end) ?? Infinity;
+  
+      if (current_tree.num_imagined > current_min_imagined) {
+        continue;
+      }
+
+  
+      if (index === this.children.length) {
+        ret.push(current_tree);
+        let end_map = min_imagined.get(current_tree.start);
+        if (!end_map) {
+          end_map = new Map();
+          min_imagined.set(current_tree.start,end_map);
+        }
+        end_map.set(current_tree.end, Math.min(current_min_imagined,current_tree.num_imagined))
+      } else {
+        for (const child_forest of this.children[index]) {
+        if (edge_context.get(this)?.get(child_forest[0]) !== child_forest[1]) {
+            let map = edge_context.get(this);
+            if (!map) {
+              let adding = new Map();
+              edge_context.set(this, adding);
+              map = adding;
+            }
+            map.set(child_forest[0], (map.get(child_forest[0]) ?? 0) + 1);
+            let child_trees = child_forest[0].flatten(edge_context);
+            map.set(child_forest[0], (map.get(child_forest[0]) ?? 0) - 1);
+            for (const child_tree of child_trees) {
+              if (child_tree.start === current_tree.end || child_tree.start === -1) {
+                let next_end = (child_tree.start === -1) ? current_tree.end : child_tree.end;
+                let next_tree: ParseTree = {
+                  children: current_tree.children.concat([child_tree]),
+                  num_imagined: current_tree.num_imagined + child_tree.num_imagined,
+                  data: current_tree.data,
+                  start: current_tree.start,
+                  end: next_end,
+                  variant: current_tree.variant
+                };
+                pq.queue([next_tree, index + 1]);
+              }
+            }
           }
         }
       }
-      ret = next_ret.filter((t)=>t.children.length === i+1);
     }
+  
     function has_conversion(t: ParseTree, s: Symbol) : boolean{
       let scc = undefined; //single concrete child
       for (const child of t.children) {
@@ -234,18 +260,18 @@ class ParseForest {
       return has_conversion(scc,s);
     }
 
-    let min_imagined: {[key: number]: number} = {};
+    let stratified: {[x: number]: number} = {};
     for (const tree of ret) {
-      const current = min_imagined[tree.end];
-      if ((current === undefined) || current > tree.num_imagined) {
-        min_imagined[tree.end] = tree.num_imagined;
+      const current = stratified[tree.end];
+      if ((current === undefined) || (tree.num_imagined < current)) {
+        stratified[tree.end] = tree.num_imagined;
       }
     }
 
     function filter(t: ParseTree) {
       if (t.end === t.start) return false;
       if (has_conversion(t,t.data)) return false;
-      if (t.num_imagined > min_imagined[t.end]) return false;
+      if (t.num_imagined > stratified[t.end]) return false;
 
       return true;
     }
@@ -253,16 +279,21 @@ class ParseForest {
 
     ret = ret.filter(filter);
 
-    if (DEBUG)
-    for (const tree of ret) {
-      console.log(ptree_str(tree, indent + "\t"));
-      console.log(tree.start, tree.end);
-    }
-    
-    this.flatten_memo = ret.map((x)=>x);
+    this.flatten_memo = ret.map((x) => x);
     return ret;
+    
   }
+
+  
 }
+
+function heuristic(tree: ParseTree, end: number): number {
+  const remainingTokens = Math.max(0, end - tree.end);
+  const avgImaginedTokensPerToken = tree.num_imagined / (tree.end - tree.start);
+  const estimatedImaginedTokens = remainingTokens * avgImaginedTokensPerToken;
+  return estimatedImaginedTokens;
+}
+
 
 export const defaultParseTree: ParseTree = {
   children: [],
@@ -309,6 +340,19 @@ export type ParseTree = {
   end: number;
   variant: number;
   render_info?: RenderInfo;
+}
+
+export function deep_copy(tree: ParseTree): ParseTree {
+  let ret = {
+    children: tree.children.map(deep_copy),
+    data:tree.data,
+    token:tree.token,
+    num_imagined: tree.num_imagined,
+    start: tree.start,
+    end: tree.end,
+    variant: tree.variant,
+  }
+  return ret;
 }
 
 export function ptree_less_shallow(tree: ParseTree) {
@@ -374,6 +418,15 @@ function ptree_eq(t1: ParseTree, t2: ParseTree) {
   return true;
 }
 
+function is_epsilon(t: ParseTree) {
+  if (is_box(t) && !is_term(t.data)) {
+    if (grammar[t.data - grammar_start].some((x)=>x.rhs.length === 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function ptree_str(t: ParseTree, indent = ""){
   let ret = "";
   function helper(t: ParseTree, ind: string){
@@ -388,9 +441,7 @@ export function ptree_str(t: ParseTree, indent = ""){
     if (t.token) {
       ret += "\"" + t.token + "\"";
     }
-    if (is_box(t)) {
-      ret += "BOX";
-    }
+    ret += " ~ " + t.num_imagined;
     ret += "\n";
     for (const child of t.children) {
       helper(child,ind+"\t");
@@ -431,6 +482,9 @@ function attach_ast(tree: ParseTree): void {
 
 export function add_render_info(tree: ParseTree) {
   function recurse(tree_inner: ParseTree, parent: ParseTree) : number{
+    if (is_box(tree_inner) && is_list(tree_inner.data) && is_list(parent.data) && tree_inner.data === parent.data) {
+      return 0;
+    }
     if (tree_inner.render_info) {
       tree_inner.render_info.parent = parent;
       if (tree_inner.render_info!.cursor_index === -1) {
@@ -470,6 +524,7 @@ export function add_render_info(tree: ParseTree) {
       for (let child of tree_inner.children) {
         size += recurse(child,tree_inner);
       }
+      tree_inner.children = tree_inner.children.filter(x => x.render_info);
       tree_inner.render_info.size = size;
       return size;
     }
@@ -477,7 +532,25 @@ export function add_render_info(tree: ParseTree) {
   for (let child of tree.children) {
     recurse(child,tree);
   }
+  tree.children = tree.children.filter(x => x.render_info);
+    if (tree.render_info!.cursor_index === -1) {
+      if (tree.token) {
+        tree.render_info!.cursor_index = tree.token.length;
+      }
+      else {
+        tree.render_info!.cursor_index = 1;
+      }
+    }
   attach_ast(tree);
+}
+
+export function reset_focus(tree: ParseTree) {
+  if (tree.render_info) {
+    tree.render_info.focus_flag = false;
+  }
+  for (let child of tree.children) {
+    reset_focus(child);
+  }
 }
 
 export function concreteify(tree: ParseTree, start=0): number{
@@ -485,6 +558,7 @@ export function concreteify(tree: ParseTree, start=0): number{
   if (tree.children.length === 0) {
     if (!tree.token && is_term(tree.data) && defaults[tree.data].length !== 0) {
       tree.token = defaults[tree.data];
+      tree.num_imagined = 0;
     }
     if (!is_term(tree.data) && grammar[tree.data - grammar_start].length === 1) {
       console.log("adding");
@@ -743,6 +817,9 @@ function mutationFilter<T>(arr: T[], cb: (x: T)=>boolean) {
 }
 
 function decompose_edge(stream: ParseTree[], is_right_edge: boolean) : ParseTree[] {
+  if (stream.length === 0) {
+    return [];
+  }
   let ind = 0;
   if (is_right_edge) {
     ind = stream.length-1;
@@ -754,18 +831,26 @@ function decompose_edge(stream: ParseTree[], is_right_edge: boolean) : ParseTree
       ind = stream.length-1;
     }
     looking_at = stream[ind];
+    if (looking_at === undefined) {
+      break;
+    }
   }
-  mutationFilter(stream, (x)=>!is_box(x));
   if (is_right_edge) {
     ind = stream.length-1;
   }
   let edge = stream[ind];
   let ret = [];
-  while (is_term(edge.data)) {
-    ret.push(edge);
+  while (is_term(edge.data) || is_box(edge)) {
+    if (!is_box(edge)) {
+      ret.push(edge);
+    }
     stream.splice(ind,1);
     if (is_right_edge) {
       ind = stream.length-1;
+    }
+    edge = stream[ind];
+    if (edge === undefined) {
+      break;
     }
   }
   return ret;
@@ -775,9 +860,29 @@ export function new_reparse(to: ParseTree): ParseTree[] {
   let middle = to.children;
   middle = middle.filter((x)=>!is_box(x));
   let [left, right] = left_and_right(to);
-  left = left.filter((x)=>!is_box(x));
-  right = right.filter((x)=>!is_box(x));
   while(true) {
+    let end_of_left = left[left.length];
+    while(end_of_left && is_box(end_of_left)) {
+      left.pop();
+      end_of_left = left[left.length];
+    }
+    let beginning_of_right = right[0];
+    while(beginning_of_right && is_box(beginning_of_right)) {
+      right.splice(0,1);
+      beginning_of_right = right[0];
+    }
+    console.log("left:");
+    for (const tree of left) {
+      console.log(ptree_str(tree));
+    }
+    console.log("middle:");
+    for (const tree of middle) {
+      console.log(ptree_str(tree));
+    }
+    console.log("right:");
+    for (const tree of right) {
+      console.log(ptree_str(tree));
+    }
     let middle_chart = recognize_append([],middle);
     let middle_results = get_results(middle_chart);
     if (!middle_results.some((item)=>item.rule.lhs === grammar_start)) {
@@ -787,6 +892,9 @@ export function new_reparse(to: ParseTree): ParseTree[] {
     let results = parse(left.concat(middle).concat(right));
     if (results.length !== 0) {
       return results;
+    }
+    if (left.length === 0 && right.length === 0) {
+      return [];
     }
     let inserting = decompose_edge(left,true);
     middle = inserting.concat(middle);
@@ -1013,7 +1121,7 @@ export function parse(stream: ParseTree[], any_target = false){
             dot: 0, 
             from: i,
             // Nodes aren't concrete if they don't have concrete children -- and when we add the new items, they don't
-            concrete: false,
+            concrete: rule.rhs.length === 0 ? true : false,
             forest: parse_forest,
           });
         }
@@ -1046,7 +1154,7 @@ export function parse(stream: ParseTree[], any_target = false){
     for (const item of state_sets[0].items.to_array()){
       if(item.rule.lhs === grammar_start && item.dot === 0){
         let length = stream.length;
-        let parses = item.forest.flatten((any_target)? length : -1);
+        let parses = item.forest.flatten();
         for (const parse of parses) {
           if (parse.end - parse.start === (stream[stream.length-1].end - stream[0].start)){
             let add = true;
