@@ -5,7 +5,7 @@ import { add_render_info, concreteify, decompose, defaultParseTree, get_root, Pa
 import { Tree } from "./Tree";
 import { child, is_box, lca_prevcousin, nav_left, next_sibling, parent, nav_right, prev_sibling, lca_nav_left } from "~/navigate";
 import { S_AST } from "~/gen/ast_gen";
-import { SerializerVisitor } from "~/language_files/serializer";
+// import { SerializerVisitor } from "~/language_files/serializer";
 import { EvaluatorVisitor } from "~/language_files/evaluator";
 import * as paper from 'paper';
 
@@ -345,7 +345,7 @@ function del(cursor: ParseTree, parent: ParseTree) {
     return cursor;
 }
 
-const printer = new SerializerVisitor();
+// const printer = new SerializerVisitor();
 
 let evaluator: EvaluatorVisitor;
 let canvas: HTMLCanvasElement;
@@ -434,7 +434,6 @@ export const Editor: Component = () => {
       }
   
         let target = getTarget(event,focusedNode());
-        console.log("Target:");
         if (target === null){return;}
         else {
             // console.log(ptree_str(target));} else {console.log("no target");}
@@ -442,7 +441,7 @@ export const Editor: Component = () => {
                 let root = get_root(focusedNode());
                 if (root) {
                     set_node(root,ptree_shallow(root));
-                    // root.render_info?.ast?.accept(evaluator, undefined);
+                    root.render_info?.ast?.accept(evaluator, undefined);
                     reset_focus(root);
                 }
                 return;
@@ -459,13 +458,16 @@ export const Editor: Component = () => {
                 return;
             }
             console.log(newSubTrees.length);
-            concreteify(newSubTrees[0]);
-            let looking_at = target;
-            set_node(get_root(looking_at),newSubTrees[0]);
-            reset_focus(get_root(newSubTrees[0]))
+            let looking_at = newSubTrees[0][1];
+            let new_node = newSubTrees[0][0];
+            concreteify(new_node);
+            set_node(looking_at,new_node);
+            reset_focus(get_root(new_node))
             console.log("new tree");
-            console.log(ptree_str(newSubTrees[0]));
-            // newSubTrees[0].render_info?.ast?.accept(evaluator, undefined);
+            console.log(ptree_str(new_node));
+            console.log("old");
+            console.log(ptree_str(looking_at));
+            new_node.render_info?.ast?.accept(evaluator, undefined);
         }
     }
   };
@@ -490,13 +492,10 @@ export const Editor: Component = () => {
 function set_node(target: ParseTree, new_node: ParseTree) {
     new_node.render_info = target.render_info;
     add_render_info(new_node);
+    target.render_info!.reactiveSet(new_node);
     if (!target.render_info!.parent) {
-        if (target.render_info) {
-            target.render_info.reactiveSet(new_node);
-        }
         return;
     }
     const index = target.render_info!.parent.children.indexOf(target);
     target.render_info!.parent.children[index] = new_node;
-    target.render_info!.reactiveSet(new_node);
 }

@@ -1,6 +1,8 @@
+import { zhangShasha } from "./diff";
 import { Symbol } from "./gen/grammar";
-import { ParseForest, ParseTree } from "./parse"
+import { ParseTree, ptree_eq, ptree_shallow } from "./parse"
 import PriorityQueue from "ts-priority-queue";
+import { ParseForest } from "./parseForest";
 
 export type NTreeChild = NTree | ParseForest | ParseTree;
 export type NTreeLeaf = ParseForest | ParseTree;
@@ -10,13 +12,37 @@ export class NTree {
     children: NTreeChild[];
     serialization: string | undefined;
     leaves: NTreeLeaf[] | undefined;
+    len: number | undefined;
     variant: number;
+    data: Symbol;
 
-    private constructor(kids: NTreeChild[], src: ParseForest, variant: number) {
+    private constructor(kids: NTreeChild[], src: ParseForest) {
         this.children = kids;
         this.source = src;
-        this.variant = variant;
+        this.variant = src.variant;
+        this.data = src.data;
         this.serialize();
+    }
+
+    get_len(): number {
+        if (this.len) {
+            return this.len;
+        }
+        let ret = 0;
+        for (const child of this.children) {
+            if (child instanceof ParseForest) {
+                continue;
+            }
+            if (child instanceof NTree) {
+                ret += child.get_len();
+                continue
+            }
+            
+            if (child.start !== -1 && child.data !== Symbol.epsilon) {
+                ret++;
+            }
+        }
+        return ret;
     }
 
     serialize(): string {
@@ -61,6 +87,14 @@ export class NTree {
             return false;
         }
         for (let i = 0; i < arr1.length; i++) {
+            if (
+                !(arr1[i] instanceof NTree) && !(arr1[i] instanceof ParseForest) && 
+                !(arr2[i] instanceof NTree) && !(arr2[i] instanceof ParseForest)) {
+                //both are ParseTrees
+                if (!ptree_eq(arr1[i] as ParseTree, arr2[i] as ParseTree)) {
+                    return false;
+                }
+            }
             if (arr1[i] !== arr2[i]) {
                 return false;
             }
@@ -68,8 +102,8 @@ export class NTree {
         return true;
     }
 
-    static get_ntree(variant: number, src: ParseForest, kids: NTreeChild[]) {
-        let newNode = new NTree(kids, src, variant);
+    static get_ntree(src: ParseForest, kids: NTreeChild[]) {
+        let newNode = new NTree(kids, src);
         let nlist: NTree[] | undefined;
         if (!this.me_ntrees) {
             this.me_ntrees = new Map<string, NTree[]>();
@@ -85,7 +119,7 @@ export class NTree {
         }
 
         for (let arr of nlist) {
-            if (this.seqeq(arr.children, kids)) {
+            if (arr.source === src && this.seqeq(arr.children, kids)) {
                 return arr;
             }
         }
@@ -100,6 +134,7 @@ export class Node {
     tree: NTree;
     cost: number;
     heuristic: number | undefined;
+    diff: number | undefined;
 
     private constructor(tree: NTree, cost: number) {
         this.tree = tree;
@@ -124,97 +159,135 @@ export class Node {
 
         return n;
     }
+
+    get_diff(from: ParseTree, path: number[], leaves: Set<ParseTree>) {
+        if (this.diff) {
+            return this.diff;
+        }
+        this.diff = diff(from, path, this, leaves);
+        return this.diff;
+    }
 }
 
 function serialize_child(n: NTreeChild) {
     if (n instanceof ParseForest) {
-        return "[" + Symbol[n.data];
+        return "[" + n.start + "." + Symbol[n.data];
     }
 
     if (n instanceof NTree) {
         return n.serialize();
     }
 
-    return "t"+Symbol[n.data];
+    if (n.start === -1) {
+        return "?"+Symbol[n.data];
+    }
+
+    return "t"+n.start+"."+Symbol[n.data];
 }
 
+function calculate_heuristic(leaves: NTreeLeaf[], prev_end: number, next_start: number){
+    let starts: number[] = [next_start];
+    let ends: number[] = [prev_end];
+    let strict_ends: number[] = [0]
 
-function get_edges(n: Node): Node[] {
-
-    let ancestry: [NTree, number][] = [];
-    let accum: Node[] = [];
-    let prev_end = 0;
-    let next_start = Infinity;
-    let originalNode = n;
-
-    let starts: number[] = [];
-    let ends: number[] = [];
-    let leaves = n.tree.get_leaves();
 
     for (let i = 0; i < leaves.length; i++) {
         if (!(leaves[i] instanceof ParseForest)) {
-            ends.push((leaves[i] as ParseTree).end);
+            if (leaves[i].start === -1) {
+                strict_ends.push(strict_ends[strict_ends.length-1]??0);
+            }
+            else {
+                let p_end = (leaves[i] as ParseTree).end;
+                strict_ends.push(p_end);
+            }
         }
         else {
-            ends.push(ends[ends.length-1]??0);
+            strict_ends.push(-1);
+        }
+    }
+    for (let i = 0; i < leaves.length; i++) {
+        if (!(leaves[i] instanceof ParseForest) && leaves[i].start !== -1) {
+            let p_end = (leaves[i] as ParseTree).end;
+            ends.push(p_end);
+        }
+        else {
+            ends.push(ends[ends.length-1]??prev_end);
         }
     }
     for (let i = leaves.length-1; i >= 0; i--) {
-        if (!(leaves[i] instanceof ParseForest)) {
-            starts.unshift((leaves[i] as ParseTree).start);
+        if (leaves[i].start !== -1) {
+            starts.unshift(leaves[i].start);
         }
         else {
-            starts.unshift(starts[0] ?? Infinity)
+            starts.unshift(starts[0] ?? next_start);
         }
     }
+    let ret = 0;
+    for (let i = 0; i < leaves.length; i++) {
+        const leaf = leaves[i];
+        if (leaf.start !== -1 && leaf.start < ends[i]) {
+            return Number.MAX_SAFE_INTEGER;
+        }
+        if (leaf instanceof ParseForest) {
+            ret += leaf.get_sub_heurisic(ends[i], starts[i+1]);
+        }
+        else {
+            if (leaf.start === -1) {
+                ret += 1;
+            }
+            else {
+                if (ends[i] <= leaf.start && starts[i+1] >= leaf.end) {
+                    if (starts[i+1] !== next_start && starts[i+1] !== leaf.end) {
+                        return Number.MAX_SAFE_INTEGER;
+                    } 
+                    if (strict_ends[i] !== -1) {
+                        if (leaves[i].start !== -1 && (leaves[i] as ParseTree).start !== strict_ends[i]) {
+                            return Number.MAX_SAFE_INTEGER;
+                        }
+                    }
+                }
+                else {
+                    return Number.MAX_SAFE_INTEGER;
+                }
+            }
+        }
+    }
+    return ret;
+}
+
+
+function get_edges(n: Node, len: number): Node[] {
+
+    let ancestry: [NTree, number][] = [];
+    let accum: Node[] = [];
+    let originalNode = n;
+
     let index = 0;
 
-    function delta_heuristic(from: ParseForest, to: NTreeLeaf[], leaves: NTreeLeaf[], index: number, starts: number[], ends: number[]) {
-        let old_h = from.get_sub_heurisic(ends[index], starts[index]);
-        let delta = -(old_h + 1);
-
-        if (to.length === 1) {
-            if (to[0].start !== -1) {
-                let ind = index - 1;
-                let looking_at = leaves[ind];
-                while (looking_at && (looking_at instanceof ParseForest || looking_at.start === -1)) {
-                    if (looking_at instanceof ParseForest) {
-                        let old_h_l = looking_at.get_sub_heurisic(ends[ind],starts[ind]);
-                        let new_h = looking_at.get_sub_heurisic(ends[ind],to[0].start);
-                        delta += (new_h - old_h_l);
-                    }
-                    ind--;
-                    looking_at = leaves[ind];
-                }
-                ind = index + 1;
-                looking_at = leaves[ind];
-                while (looking_at && (looking_at instanceof ParseForest || looking_at.start === -1)) {
-                    if (looking_at instanceof ParseForest) {
-                        let old_h_l = looking_at.get_sub_heurisic(ends[ind],starts[ind]);
-                        let new_h = looking_at.get_sub_heurisic(ends[ind],to[0].start);
-                        delta += (new_h - old_h_l);
-                    }
-                    ind++;
-                    looking_at = leaves[ind];
-                }
-            }
-        }
-        else { // pls look over i beg of thee
-            delta += to.length;
-            for (let omega = 0; omega < to.length; omega++) {
-                let this_one = to[omega];
-                if (this_one instanceof ParseForest) {
-                    delta += this_one.get_sub_heurisic(ends[index], starts[index]);
-                } else {
-                    throw new Error("get_n_trees returned invalid result");
-                }
-            }
-        }
-        return delta;
-        
-    }
 
     let edge_context: Map<ParseForest,Map<ParseForest,number>> = new Map();
+
+    function has_conversion(symbol: Symbol) {
+        let i = ancestry.length - 1;
+        while (i >= 0) {
+            for (let ii = 0; ii < ancestry[i][0].children.length; ii++) {
+                let looking_at = ancestry[i][0].children[ii];
+                if (ii !== ancestry[i][1]) {
+                    if (looking_at instanceof NTree || looking_at instanceof ParseForest) {
+                        return false;
+                    }
+                    if (looking_at.start !== -1) {
+                        return false;
+                    }
+                }
+            }
+            if ((ancestry[i][0] as NTree).source.data === symbol) {
+                return true;
+            }
+            i--;
+        }
+        return false;
+    }
 
     function dfs(n: NTree): boolean {
         let i = -1;
@@ -237,50 +310,39 @@ function get_edges(n: Node): Node[] {
             }
             
             if (child instanceof ParseForest) {
-                let res = child.get_n_trees(ends[index],starts[index],edge_context);
-                for (const new_leaves of res) {
-                    if (new_leaves.length === 0) {
-                        // kill EVERYTHING with FIRE
-                        accum = [];
-                        return false;
-                    }
+                if (!has_conversion(originalNode.tree.get_leaves()[index].data)) {
+                    let res = child.get_n_trees(edge_context);
+                    for (const new_leaves of res) {
+                        let all_imagined = !new_leaves.some(leaf=>leaf.start!==-1);
+                        if (all_imagined) {
+                            continue;
+                        }
+                        let new_n_tree = NTree.get_ntree(child,new_leaves);
 
-                    let new_n_tree: NTree;
-
-                    let new_childs: NTreeChild[];
-                    if (new_leaves.length === 1 && !(new_leaves[0] instanceof ParseForest)) {
-                        new_childs = n.children.map((x) => x);
-                        new_childs[i] = new_leaves[0];
-                        new_n_tree = NTree.get_ntree(child.variant,n.source, new_childs);
-                    }
-                    else {
-                        new_n_tree = NTree.get_ntree(child.variant,child,new_leaves);
-
-                        new_childs = n.children.map((x) => x);
+                        let new_childs = n.children.map((x) => x);
                         new_childs[i] = new_n_tree;
-                        new_n_tree = NTree.get_ntree(child.variant,n.source, new_childs);
-                    }
-                    
-                    for (let j = ancestry.length - 1; j >= 0; j--) {
-                        const parent = ancestry[j][0];
-                        let ii = ancestry[j][1]; // off by one?
-                        let new_new_childs = parent.children.map((x) => x);
-                        new_new_childs[ii] = new_n_tree;
-                        new_n_tree = NTree.get_ntree(child.variant,parent.source, new_new_childs);
-                    }
+                        new_n_tree = NTree.get_ntree(n.source, new_childs);
+                        
+                        for (let j = ancestry.length - 1; j >= 0; j--) {
+                            const parent = ancestry[j][0];
+                            let ii = ancestry[j][1]; 
+                            let new_new_childs = parent.children.map((x) => x);
+                            new_new_childs[ii] = new_n_tree;
+                            new_n_tree = NTree.get_ntree(parent.source, new_new_childs);
+                        }
 
-                    let imagined = false;
+                        let cost = originalNode.cost;
 
-                    if (new_leaves.length === 1 && new_leaves[0].start === -1) {
-                        imagined = true;
+                        let node = Node.get_or_make_node(new_n_tree, cost);
+                        if (!node.heuristic) {
+                            let new_node_leaves = originalNode.tree.get_leaves().map(x=>x);
+                            new_node_leaves.splice(index,1,...new_leaves);
+                            node.heuristic = calculate_heuristic(new_node_leaves,0,len);
+                        }
+                        if (node.heuristic < Number.MAX_SAFE_INTEGER) {
+                            accum.push(node);
+                        }
                     }
-
-                    let node = Node.get_or_make_node(new_n_tree, originalNode.cost + (imagined ? 2 : 1));
-                    if (!node.heuristic) {
-                        node.heuristic = originalNode.heuristic! + delta_heuristic(child,new_leaves,leaves,index,starts,ends);
-                    }
-
-                    accum.push(node);
                 }
             }
             index++;
@@ -308,23 +370,77 @@ function is_solution(n: Node, len: number): boolean {
     return tot === len;
 }
 
-export function solve(start_forests: ParseForest[], len: number) : ParseTree[] {
-    let nodes: Node[] = [];
-    for (const forest of start_forests) {
-        let possible_children = forest.get_n_trees(0, Infinity, new Map());
-        for (const n_trees of possible_children) {
-            let heuristic = 0;
-            
-            for (const leaf of n_trees) {
-                if (leaf instanceof ParseForest) {
-                    heuristic += 1 + leaf.get_sub_heurisic(0, Infinity);
-                }
-                else {
-                    throw new Error("Goofy goober!");
+function diff(before: ParseTree, path: number[], next: Node, leaves: Set<ParseTree>) {
+    function compare(b: ParseTree, n: NTreeChild, skip: number) {
+        if (n instanceof NTree) {
+            if (leaves.has(b)) {
+                return false;
+            }
+            if (n.data !== b.data || n.variant !== b.variant) {
+                return false;
+            }
+            if (n.children.length !== b.children.length) {
+                return false;
+            }
+            for (let i = 0; i < n.children.length; i++){
+                if (i !== skip && !compare(b.children[i],n.children[i],-1)){
+                    return false;
                 }
             }
+            return true;
+        }
+        if (n instanceof ParseForest) {
+            if (leaves.has(b)) {
+                return false;
+            }
+            if (n.data !== b.data || n.variant !== b.variant) {
+                return false;
+            }
+            return true;
+        }
+        return ptree_eq(b,n);
+    }
+    let before_l = before;
+    let next_l: NTreeChild = next.tree;
+    const max_diff = path.length;
+    for (let i = 0; i < path.length-1; i++) {
+        if (!compare(before_l,next_l,path[i])) {
+            return max_diff - i;
+        }
+        if (next_l instanceof ParseForest) {
+            if (next_l.data === before_l.data && next_l.variant === before_l.variant) {
+                return 0;
+            }
+            return max_diff - i;
+        }
+        before_l = before_l.children[path[i]];
+        next_l = next_l.children[path[i]];
+    }
+    return 0;
+}
 
-            let n_tree = NTree.get_ntree(forest.variant, forest, n_trees);
+function make_path(target: ParseTree): number[] {
+    let looking_at = target;
+    let prev = target;
+    let ret: number[] = [];
+    while (looking_at.render_info && looking_at.render_info.parent) {
+        looking_at = looking_at.render_info.parent;
+        let ind = looking_at.children.indexOf(prev);
+        ret.unshift(ind);
+        prev = looking_at;
+    }
+    return ret;
+}
+
+export function solve(start_forests: ParseForest[], len: number, before: ParseTree, target: ParseTree, leaves: Set<ParseTree>) : ParseTree[] {
+    let path = make_path(target);
+    let nodes: Node[] = [];
+    for (const forest of start_forests) {
+        let possible_children = forest.get_n_trees( new Map());
+        for (const n_trees of possible_children) {
+            let heuristic = calculate_heuristic(n_trees,0,Number.MAX_SAFE_INTEGER);
+
+            let n_tree = NTree.get_ntree(forest, n_trees);
             let node = Node.get_or_make_node(n_tree, 0);
             if (!node.heuristic) {
                 node.heuristic = heuristic;
@@ -333,7 +449,7 @@ export function solve(start_forests: ParseForest[], len: number) : ParseTree[] {
         }
     }
 
-    let ret = search(nodes, len);
+    let ret = search(nodes, len, before, path, leaves);
     if (ret) {
         return [node_to_parse_tree(ret)];
     }
@@ -349,24 +465,26 @@ function node_to_parse_tree(node: Node): ParseTree {
                 start: 0,
                 end: 0,
                 num_imagined: 0,
-                variant: tree.variant,
+                variant: tree.source.variant,
             }
         }
         if (tree instanceof ParseForest) { 
             throw new Error("can't convert node to parse tree if it contains parse forest");
         }
-        return tree;
+        return ptree_shallow(tree);
         
     }
     return ntree_to_parse_tree(node.tree);
 }
 
 
-function search(start: Node[], len: number): Node | undefined {
-    debugger;
+function search(start: Node[], len: number, before: ParseTree, path: number[], leaves: Set<ParseTree>): Node | undefined {
     let pq = new PriorityQueue<Node>({
         comparator: (a, b) => {
-            return a.cost + a.heuristic! - b.cost - b.heuristic!;
+            if (a.heuristic! !== b.heuristic) {
+                return a.heuristic! - b.heuristic!;
+            }
+            return a.get_diff(before, path, leaves) - b.get_diff(before, path, leaves);
         }
     });
 
@@ -384,7 +502,7 @@ function search(start: Node[], len: number): Node | undefined {
             return dq;
         }
 
-        let childs = get_edges(dq);
+        let childs = get_edges(dq, len);
 
         for (let c of childs) {
             if (!visited.has(c)) {

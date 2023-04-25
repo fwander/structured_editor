@@ -4,14 +4,14 @@ import { Symbol, grammar, grammar_start, is_list, is_term } from "~/gen/grammar"
 import { RenderInfo, ParseTree, ptree_str, ptree_shallow, ptree_less_shallow } from "~/parse";
 import { insertMode } from "./Editor";
 import "./Tree.css";
-import { is_box } from "~/navigate";
+import { is_box, is_epsilon } from "~/navigate";
 
 
 function child_style(tree: ParseTree,index: number): string {
   if (is_term(tree.data) || tree.data < 0 || tree.variant < 0) {
     return "";
   }
-  return grammar[tree.data-grammar_start][tree.variant].names[index];
+  return grammar[tree.data-grammar_start][tree.variant]?.names[index] ?? "";
 }
 
 function get_breaks(tree: ParseTree) : number[] {
@@ -86,6 +86,9 @@ export const Tree: Component<TreeProps> = (props) => {
 
   return (
     <>
+    {
+      (is_epsilon(tree()))?
+      null :
       <div
         tabIndex="0"
         onFocus={handleFocus}
@@ -124,6 +127,8 @@ export const Tree: Component<TreeProps> = (props) => {
           
         }
       </div>
+
+    }
     </>
   );
 };

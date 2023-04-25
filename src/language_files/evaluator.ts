@@ -47,7 +47,6 @@ export class EvaluatorVisitor extends Visitor<EvaluationResult, undefined> {
 
                 return ret;
             case "circle":
-                let center = new paper.Point(0, 0);
                 let radius = (list[0]?.accept(this, undefined) as number) ?? 10;
                 let circ = new paper.Path.Circle({
                     center   : paper.view.center,

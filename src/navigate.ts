@@ -1,4 +1,4 @@
-import { is_list } from "./gen/grammar";
+import { Symbol, is_list } from "./gen/grammar";
 import { ParseTree, ptree_str } from "./parse";
 
 function move_to_bottom(from: ParseTree, go_first?: number) {
@@ -160,7 +160,7 @@ export function nav_right(from: ParseTree, prev?: ParseTree): ParseTree {
     if (ret === prev) {
         return ret;
     }
-    else if (is_box(ret) && ret.variant !== -1){
+    else if (is_epsilon(ret)){
         return nav_right(ret,ret)
     }
     return ret;
@@ -170,8 +170,8 @@ export function nav_left(from: ParseTree, prev?: ParseTree): ParseTree {
     if (ret === prev) {
         return ret;
     }
-    else if (is_box(ret) && ret.variant !== -1){
-        return nav_right(ret,ret)
+    else if (is_epsilon(ret)){
+        return nav_left(ret,ret)
     }
     return ret;
 }
@@ -211,7 +211,11 @@ export function child(from: ParseTree, go_first?: number) {
         }
         ind = go_first;
     }
-    return move_to_bottom(from.children[ind], go_first);
+    let ret = move_to_bottom(from.children[ind], go_first);
+    if (is_epsilon(ret) && is_list(ret.render_info!.parent!.data)) {
+        return nav_right(ret)
+    }
+    return ret;
 }
 export function lca_prevcousin(from: ParseTree): [[ParseTree, number],[ParseTree, number]] | null {
     let lca_height_from_from: number = 1;
@@ -252,5 +256,15 @@ function first_previous_nonbox_child(parent: ParseTree, child: ParseTree): Parse
 }
 
 export function is_box(n: ParseTree) {
-    return n.children.length === 0 && (n.token === undefined || n.token.length === 0);
+    return n.num_imagined > 0 || (n.children.length === 0 && !n.token);
+}
+
+export function is_epsilon(n: ParseTree): boolean {
+    if (n.data === Symbol.epsilon) {
+        return true;
+    }
+    if (n.children.length === 1) {
+        return is_epsilon(n.children[0]);
+    }
+    return false;
 }
